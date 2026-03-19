@@ -1,0 +1,19 @@
+{
+  "sites": [
+    {
+      "name": "completeSEO",
+      "domain": "completeseo.com",
+      "sitemapPath": "/sitemap_index.xml",
+      "concurrency": 5,
+      "delayMs": 100,
+      "enabled": true
+    }
+  ],
+  "defaults": {
+    "sitemapPath": "/sitemap_index.xml",
+    "concurrency": 5,
+    "delayMs": 100,
+    "timeoutMs": 10000,
+    "userAgent": "CacheWarmer/1.0 (+https://completeseo.com)"
+  }
+}

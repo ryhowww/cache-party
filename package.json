@@ -1,0 +1,19 @@
+{
+  "name": "cache-warmer",
+  "version": "1.0.0",
+  "description": "Keeps Cloudflare edge cache warm across WordPress sites",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "fast-xml-parser": "^5.5.7",
+    "node-cron": "^3.0.3",
+    "p-limit": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module"
+}
