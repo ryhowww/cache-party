@@ -76,7 +76,7 @@ app.post("/api/warm", requireAuth, (req, res) => {
 
 // Critical CSS extraction
 app.post("/api/critical-css", requireAuth, async (req, res) => {
-  const { url, viewport_width } = req.body || {};
+  const { url, css_url, viewport_width } = req.body || {};
 
   if (!url) {
     return res.status(400).json({ error: 'Provide "url" to extract critical CSS from' });
@@ -84,7 +84,7 @@ app.post("/api/critical-css", requireAuth, async (req, res) => {
 
   try {
     const { extractCriticalCSS } = await import("./critical-css.js");
-    const css = await extractCriticalCSS(url, viewport_width || 1300);
+    const css = await extractCriticalCSS(url, css_url || null, viewport_width || 1300);
     res.json({ css, url, viewport_width: viewport_width || 1300 });
   } catch (err) {
     info("CRITICAL-CSS", `Error: ${err.message}`);
