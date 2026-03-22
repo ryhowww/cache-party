@@ -23,6 +23,7 @@ class Plugin {
         new Settings();
         new Module_Loader();
         new Meta_Box();
+        new Cloudflare();
 
         // Debug overlay: only on front end with ?perf-debug=1.
         if ( ! is_admin() ) {
@@ -60,7 +61,9 @@ class Plugin {
         delete_option( 'cache_party_images' );
         delete_option( 'cache_party_assets' );
         delete_option( 'cache_party_warmer' );
+        delete_option( 'cache_party_cloudflare' );
         delete_option( 'cache_party_cleanup' );
+        delete_transient( 'cache_party_cf_zone_id' );
         delete_option( 'cache_party_migrated_webp_meta' );
         delete_option( 'cache_party_last_warm' );
         $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = '_cache_party_page'" );

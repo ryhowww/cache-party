@@ -28,6 +28,7 @@ spl_autoload_register( function ( $class_name ) {
         'CacheParty\\Migration'                 => __DIR__ . '/class-migration.php',
         'CacheParty\\Meta_Box'                  => __DIR__ . '/class-meta-box.php',
         'CacheParty\\Assets\\CLI_Assets'        => __DIR__ . '/assets/class-cli-assets.php',
+        'CacheParty\\Cloudflare'                => __DIR__ . '/class-cloudflare.php',
     ];
 
     if ( isset( $classes[ $class_name ] ) ) {

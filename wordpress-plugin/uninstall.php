@@ -32,9 +32,11 @@ function cache_party_uninstall_site( $delete_webp ) {
     delete_option( 'cache_party_images' );
     delete_option( 'cache_party_assets' );
     delete_option( 'cache_party_warmer' );
+    delete_option( 'cache_party_cloudflare' );
     delete_option( 'cache_party_cleanup' );
     delete_option( 'cache_party_migrated_webp_meta' );
     delete_option( 'cache_party_last_warm' );
+    delete_transient( 'cache_party_cf_zone_id' );
 
     // Clean per-page meta.
     $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = '_cache_party_page'" );

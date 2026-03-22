@@ -53,6 +53,13 @@ class Settings {
             'show_in_rest'      => false,
         ] );
 
+        register_setting( 'cache_party', 'cache_party_cloudflare', [
+            'type'              => 'array',
+            'sanitize_callback' => [ $this, 'sanitize_cloudflare' ],
+            'default'           => [],
+            'show_in_rest'      => false,
+        ] );
+
         register_setting( 'cache_party', 'cache_party_cleanup', [
             'type'              => 'boolean',
             'sanitize_callback' => 'rest_sanitize_boolean',
@@ -120,6 +127,19 @@ class Settings {
             'api_key'   => isset( $input['api_key'] ) ? sanitize_text_field( $input['api_key'] ) : '',
             'site_name' => isset( $input['site_name'] ) ? sanitize_text_field( $input['site_name'] ) : '',
         ];
+    }
+
+    public function sanitize_cloudflare( $input ) {
+        $clean = [
+            'email'  => isset( $input['email'] ) ? sanitize_email( $input['email'] ) : '',
+            'api_key' => isset( $input['api_key'] ) ? sanitize_text_field( $input['api_key'] ) : '',
+            'domain' => isset( $input['domain'] ) ? sanitize_text_field( $input['domain'] ) : '',
+        ];
+
+        // Clear cached zone ID when credentials change.
+        delete_transient( 'cache_party_cf_zone_id' );
+
+        return $clean;
     }
 
     public function sanitize_modules( $input ) {
@@ -612,6 +632,63 @@ class Settings {
             });
         });
         </script>
+
+        <hr style="margin: 30px 0;">
+
+        <?php
+        $cf_settings = get_option( 'cache_party_cloudflare', [] );
+        $cf_email    = defined( 'CLOUDFLARE_EMAIL' ) ? CLOUDFLARE_EMAIL : ( $cf_settings['email'] ?? '' );
+        $cf_key      = defined( 'CLOUDFLARE_API_KEY' ) ? CLOUDFLARE_API_KEY : ( $cf_settings['api_key'] ?? '' );
+        $cf_domain   = defined( 'CLOUDFLARE_DOMAIN_NAME' ) ? CLOUDFLARE_DOMAIN_NAME : ( $cf_settings['domain'] ?? '' );
+        $cf_const    = defined( 'CLOUDFLARE_EMAIL' ) || defined( 'CLOUDFLARE_API_KEY' );
+        ?>
+
+        <h2>Cloudflare</h2>
+        <p class="description">Auto-purge Cloudflare cache on content changes. After purge, the warmer is notified to re-prime.</p>
+
+        <?php if ( $cf_const ) : ?>
+            <div class="notice notice-info inline" style="margin-bottom: 1em;">
+                <p>Cloudflare credentials are defined as constants in <code>wp-config.php</code>. Fields below are read-only.</p>
+            </div>
+        <?php endif; ?>
+
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="cp_cf_email">Cloudflare email</label></th>
+                <td>
+                    <input type="email" name="cache_party_cloudflare[email]" id="cp_cf_email"
+                           value="<?php echo esc_attr( $cf_email ); ?>"
+                           class="regular-text" <?php echo $cf_const ? 'readonly' : ''; ?> />
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_cf_api_key">API key / token</label></th>
+                <td>
+                    <input type="text" name="cache_party_cloudflare[api_key]" id="cp_cf_api_key"
+                           value="<?php echo esc_attr( $cf_key ); ?>"
+                           class="regular-text" <?php echo $cf_const ? 'readonly' : ''; ?> />
+                    <p class="description">Global API Key (37 hex chars) or API Token. Auth method is auto-detected.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_cf_domain">Domain</label></th>
+                <td>
+                    <input type="text" name="cache_party_cloudflare[domain]" id="cp_cf_domain"
+                           value="<?php echo esc_attr( $cf_domain ); ?>"
+                           class="regular-text" placeholder="<?php echo esc_attr( wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>" />
+                    <p class="description">Cloudflare zone domain. Defaults to your site domain if empty.</p>
+                </td>
+            </tr>
+        </table>
+
+        <h3>Auto-Purge Triggers</h3>
+        <ul style="list-style:disc;padding-left:20px;">
+            <li><code>transition_post_status</code> — selective purge: post URL + taxonomies + homepage + feeds</li>
+            <li><code>deleted_post</code> / <code>delete_attachment</code> — homepage + feeds</li>
+            <li><code>comment_post</code> / <code>transition_comment_status</code> — post URL</li>
+            <li><code>switch_theme</code> / <code>customize_save_after</code> — full purge</li>
+        </ul>
+        <p class="description">The admin bar "Purge CF Cache" button triggers a full zone purge.</p>
 
         <?php do_action( 'cache_party_after_warmer_settings' ); ?>
         <?php
