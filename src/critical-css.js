@@ -13,19 +13,21 @@ export async function extractCriticalCSS(url, cssUrl, viewportWidth = 1300) {
 
   info("CRITICAL-CSS", `Extracting from ${url} (viewport: ${viewportWidth}px)`);
 
+  const puppeteerArgs = {
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--single-process",
+    ],
+  };
+
   // If no CSS URL provided, scrape the page to find linked stylesheets.
   if (!cssUrl) {
     info("CRITICAL-CSS", "No css_url provided, auto-detecting from page...");
-    const browser = await puppeteer.default.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-      ],
-    });
+    const browser = await puppeteer.default.launch(puppeteerArgs);
 
     try {
       const page = await browser.newPage();
@@ -34,11 +36,9 @@ export async function extractCriticalCSS(url, cssUrl, viewportWidth = 1300) {
       // Grab all stylesheet URLs from link tags AND noscript deferred blocks.
       const cssUrls = await page.evaluate(() => {
         const urls = [];
-        // Regular link stylesheets.
         document.querySelectorAll('link[rel="stylesheet"]').forEach((el) => {
           if (el.href) urls.push(el.href);
         });
-        // Deferred stylesheets inside noscript blocks.
         document.querySelectorAll("noscript").forEach((ns) => {
           const tmp = document.createElement("div");
           tmp.innerHTML = ns.textContent;
@@ -64,22 +64,21 @@ export async function extractCriticalCSS(url, cssUrl, viewportWidth = 1300) {
     }
   }
 
+  // Download the CSS since penthouse needs a string, not a URL.
+  info("CRITICAL-CSS", `Fetching CSS from ${cssUrl}`);
+  const cssResponse = await fetch(cssUrl);
+  if (!cssResponse.ok) {
+    throw new Error(`Failed to fetch CSS: HTTP ${cssResponse.status}`);
+  }
+  const cssString = await cssResponse.text();
+  info("CRITICAL-CSS", `Fetched ${cssString.length} bytes of CSS`);
+
   const css = await penthouse({
     url,
-    cssString: undefined,
-    css: cssUrl,
+    cssString,
     width: viewportWidth,
     height: 900,
-    puppeteer: {
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-      ],
-    },
+    puppeteer: puppeteerArgs,
   });
 
   info("CRITICAL-CSS", `Done. ${css.length} bytes extracted from ${url}`);
