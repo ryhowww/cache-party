@@ -56,6 +56,8 @@ class Asset_Optimizer {
     }
 
     public function enqueue_loader() {
+        $idle = (int) $this->settings['idle_timeout'];
+
         wp_enqueue_script(
             'cache-party-loader',
             CACHE_PARTY_URL . 'includes/assets/js/interaction-loader.js',
@@ -64,10 +66,14 @@ class Asset_Optimizer {
             true
         );
 
-        // Pass idle timeout to JS.
-        wp_localize_script( 'cache-party-loader', 'cachePartyLoader', [
-            'idleTimeout' => (int) $this->settings['idle_timeout'],
-        ] );
+        // Add data-cp-skip (so AO and our JS delay don't touch it) and
+        // data-idle-timeout (so the JS can read config without wp_localize_script).
+        add_filter( 'script_loader_tag', function( $tag, $handle ) use ( $idle ) {
+            if ( $handle === 'cache-party-loader' ) {
+                return str_replace( '<script ', '<script data-cp-skip data-idle-timeout="' . $idle . '" ', $tag );
+            }
+            return $tag;
+        }, 10, 2 );
     }
 
     public function add_body_class( $classes ) {

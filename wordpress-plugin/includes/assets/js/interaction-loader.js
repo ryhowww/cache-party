@@ -94,9 +94,13 @@
         document.addEventListener('keydown', loadDeferred, { once: true });
 
         // requestIdleCallback fallback: if no interaction after N seconds, load anyway.
-        var idleTimeout = (typeof cachePartyLoader !== 'undefined' && cachePartyLoader.idleTimeout)
-            ? parseInt(cachePartyLoader.idleTimeout, 10) * 1000
-            : 5000;
+        // Read config from data attribute on our script tag, or fall back to global/default.
+        var selfScript = document.querySelector('script[data-idle-timeout]');
+        var idleTimeout = selfScript
+            ? parseInt(selfScript.getAttribute('data-idle-timeout'), 10) * 1000
+            : (typeof cachePartyLoader !== 'undefined' && cachePartyLoader.idleTimeout)
+                ? parseInt(cachePartyLoader.idleTimeout, 10) * 1000
+                : 5000;
 
         if (idleTimeout > 0) {
             if (typeof requestIdleCallback === 'function') {
