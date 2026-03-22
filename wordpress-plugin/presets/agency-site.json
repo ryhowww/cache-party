@@ -1,0 +1,15 @@
+{
+    "name": "Agency Site",
+    "description": "Defaults for agency and portfolio websites with image-heavy layouts.",
+    "cache_party_modules": ["images"],
+    "cache_party_images": {
+        "webp_enabled": true,
+        "webp_quality": 85,
+        "picture_enabled": true,
+        "lazy_enabled": true,
+        "eager_count": 3,
+        "auto_alt_enabled": true,
+        "exclude_keywords": ""
+    },
+    "cache_party_cleanup": false
+}

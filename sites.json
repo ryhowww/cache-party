@@ -7,6 +7,14 @@
       "concurrency": 5,
       "delayMs": 100,
       "enabled": true
+    },
+    {
+      "name": "agentVoice",
+      "domain": "www.agentvoice.com",
+      "sitemapPath": "/sitemap_index.xml",
+      "concurrency": 5,
+      "delayMs": 100,
+      "enabled": true
     }
   ],
   "defaults": {

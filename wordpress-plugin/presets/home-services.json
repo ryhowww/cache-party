@@ -1,0 +1,15 @@
+{
+    "name": "Home Services",
+    "description": "Optimized defaults for home service business websites (plumbers, electricians, HVAC, etc.)",
+    "cache_party_modules": ["images"],
+    "cache_party_images": {
+        "webp_enabled": true,
+        "webp_quality": 80,
+        "picture_enabled": true,
+        "lazy_enabled": true,
+        "eager_count": 2,
+        "auto_alt_enabled": true,
+        "exclude_keywords": ""
+    },
+    "cache_party_cleanup": false
+}

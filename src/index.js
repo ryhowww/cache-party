@@ -74,6 +74,24 @@ app.post("/api/warm", requireAuth, (req, res) => {
   res.status(202).json({ message: `Warming started for ${siteName}` });
 });
 
+// Critical CSS extraction
+app.post("/api/critical-css", requireAuth, async (req, res) => {
+  const { url, viewport_width } = req.body || {};
+
+  if (!url) {
+    return res.status(400).json({ error: 'Provide "url" to extract critical CSS from' });
+  }
+
+  try {
+    const { extractCriticalCSS } = await import("./critical-css.js");
+    const css = await extractCriticalCSS(url, viewport_width || 1300);
+    res.json({ css, url, viewport_width: viewport_width || 1300 });
+  } catch (err) {
+    info("CRITICAL-CSS", `Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Cron: every 20 hours
 // node-cron doesn't support "every 20 hours" directly, so we use a workaround
 // Schedule check every hour, track last run time

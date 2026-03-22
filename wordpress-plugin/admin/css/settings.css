@@ -1,0 +1,58 @@
+/* Cache Party Admin Styles */
+
+/* Tab content spacing */
+.cache-party-tab-content {
+    margin-top: 20px;
+}
+
+/* Progress bar */
+#cp-bulk-progress .progress-bar-wrap {
+    background: #e0e0e0;
+    border-radius: 3px;
+    height: 24px;
+    overflow: hidden;
+}
+
+#cp-progress-bar {
+    background: #0073aa;
+    height: 100%;
+    width: 0;
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+/* Log entries */
+#cp-log-entries {
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    padding: 8px 12px;
+    border-radius: 3px;
+}
+
+#cp-log-entries div {
+    padding: 2px 0;
+    border-bottom: 1px solid #eee;
+}
+
+#cp-log-entries div:last-child {
+    border-bottom: none;
+}
+
+/* Metabox result messages */
+.cp-metabox-result span {
+    font-weight: 600;
+}
+
+/* Bulk stats table */
+.cache-party-stats-table {
+    max-width: 400px;
+}
+
+/* Media column convert link */
+.cp-column-convert {
+    text-decoration: none;
+}
+
+.cp-column-convert:hover {
+    text-decoration: underline;
+}
