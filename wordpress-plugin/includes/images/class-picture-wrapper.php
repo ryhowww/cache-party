@@ -73,6 +73,11 @@ class Picture_Wrapper {
 
         $src_url = $src_match[1];
 
+        // Normalize relative URLs to absolute.
+        if ( strpos( $src_url, '/' ) === 0 && strpos( $src_url, '//' ) !== 0 ) {
+            $src_url = home_url( $src_url );
+        }
+
         if ( ! preg_match( '/\.(jpe?g|png)(\?.*)?$/i', $src_url ) ) {
             return $img_tag;
         }
