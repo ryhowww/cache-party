@@ -518,7 +518,7 @@ class Settings {
                 <td>
                     <input type="url" name="cache_party_warmer[api_url]" id="cp_warmer_api_url"
                            value="<?php echo esc_attr( $settings['api_url'] ); ?>"
-                           class="regular-text" placeholder="https://your-warmer.up.railway.app" />
+                           class="regular-text" placeholder="https://cacheparty.com" />
                     <p class="description">Base URL of your cache warmer service.</p>
                 </td>
             </tr>
