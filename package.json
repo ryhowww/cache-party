@@ -7,8 +7,8 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "critical": "^7.2.1",
     "express": "^4.21.0",
+    "penthouse": "^2.3.3",
     "fast-xml-parser": "^5.5.7",
     "node-cron": "^3.0.3",
     "p-limit": "^4.0.0",
