@@ -23,7 +23,13 @@ export async function extractCriticalCSS(url, viewportWidth = 1300) {
     inline: false,
     // Puppeteer options for Railway (headless Linux).
     puppeteer: {
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
     },
   });
 
