@@ -7,39 +7,36 @@ import { info } from "./logger.js";
  * POST /api/critical-css
  * Body: { url: string, viewport_width?: number }
  * Returns: { css: string, url: string, viewport_width: number }
- *
- * Requires `puppeteer` and `critical` to be installed.
  */
 export async function extractCriticalCSS(url, viewportWidth = 1300) {
-  // Dynamic imports — these are heavy dependencies, only load when needed.
   const { generate } = await import("critical");
 
   info("CRITICAL-CSS", `Extracting from ${url} (viewport: ${viewportWidth}px)`);
 
-  const result = await generate({
-    src: url,
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+
+  const { css } = await generate({
+    // `url` for remote pages (not `src` which is for local files).
+    url,
     width: viewportWidth,
     height: 900,
     inline: false,
-    // Puppeteer options for Railway (headless Linux).
-    puppeteer: {
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
+    extract: true,
+    penthouse: {
+      puppeteer: {
+        executablePath,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--single-process",
+        ],
+      },
     },
   });
 
-  // `critical` returns { css, html, uncritical } when inline: false.
-  const css = typeof result === "string" ? result : result.css || "";
-
-  info(
-    "CRITICAL-CSS",
-    `Done. ${css.length} bytes extracted from ${url}`
-  );
+  info("CRITICAL-CSS", `Done. ${css.length} bytes extracted from ${url}`);
 
   return css;
 }
