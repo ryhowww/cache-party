@@ -59,12 +59,21 @@ class Lazy_Loader {
             }
         }
 
+        // Respect existing eager/fetchpriority set by the template — never downgrade to lazy.
+        $has_eager        = preg_match( '/\bloading=["\']eager["\']/i', $img );
+        $has_fetchpriority = preg_match( '/\bfetchpriority=["\']high["\']/i', $img );
+
+        if ( $has_eager || $has_fetchpriority ) {
+            // Template explicitly wants this image eager — don't touch it, just count it.
+            self::$image_index++;
+            return $this->maybe_add_dimensions( $img );
+        }
+
         $is_eager = self::$image_index < $this->eager_count;
         self::$image_index++;
 
-        // Remove existing loading/fetchpriority attributes.
+        // Remove existing loading attribute (e.g. WP core's default lazy).
         $img = preg_replace( '/\s+loading=["\'][^"\']*["\']/i', '', $img );
-        $img = preg_replace( '/\s+fetchpriority=["\'][^"\']*["\']/i', '', $img );
 
         if ( $is_eager ) {
             $img = str_replace( '<img ', '<img loading="eager" fetchpriority="high" ', $img );
