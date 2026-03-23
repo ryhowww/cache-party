@@ -113,13 +113,82 @@ class CLI_Assets {
         \WP_CLI::log( '' );
         \WP_CLI::log( sprintf( 'Done: %d generated, %d skipped, %d failed', $success, $skipped, $failed ) );
 
-        // Sync merged critical CSS to AO.
+        // Merge all critical CSS files and sync to AO.
         if ( $success > 0 && Critical_CSS::ao_defer_active() ) {
-            AO_Bridge::sync_critical_css_to_ao();
-            \WP_CLI::log( 'Synced merged critical CSS to Autoptimize.' );
+            \WP_CLI::log( 'Merging and deduplicating critical CSS...' );
+            $merged = $this->merge_critical_css( $assoc_args );
+            if ( $merged ) {
+                AO_Bridge::set_ao_defer_inline( $merged );
+                \WP_CLI::log( sprintf( 'Synced merged critical CSS to AO (%s).', size_format( strlen( $merged ) ) ) );
+            }
         }
 
         \WP_CLI::log( '' );
+    }
+
+    /**
+     * Merge all critical CSS files via Railway's merge-css endpoint.
+     * Returns the deduped CSS string, or false on failure.
+     */
+    private function merge_critical_css( $assoc_args ) {
+        $templates = Critical_CSS::list_templates();
+        if ( empty( $templates ) ) {
+            return false;
+        }
+
+        $css_strings = [];
+        foreach ( $templates as $t ) {
+            $css = file_get_contents( $t['file'] );
+            if ( $css ) {
+                $css_strings[] = $css;
+            }
+        }
+
+        if ( empty( $css_strings ) ) {
+            return false;
+        }
+
+        $service_url = $assoc_args['service-url'] ?? '';
+        if ( ! $service_url ) {
+            $warmer_settings = get_option( 'cache_party_warmer', [] );
+            $service_url     = $warmer_settings['api_url'] ?? '';
+        }
+
+        if ( ! $service_url ) {
+            \WP_CLI::warning( 'No service URL — skipping merge.' );
+            return false;
+        }
+
+        $warmer_settings = get_option( 'cache_party_warmer', [] );
+        $api_key         = $warmer_settings['api_key'] ?? '';
+        $headers         = [ 'Content-Type' => 'application/json' ];
+        if ( $api_key ) {
+            $headers['Authorization'] = 'Bearer ' . $api_key;
+        }
+
+        $endpoint = rtrim( $service_url, '/' ) . '/api/merge-css';
+
+        $response = wp_remote_post( $endpoint, [
+            'timeout' => 30,
+            'headers' => $headers,
+            'body'    => wp_json_encode( [ 'css_strings' => $css_strings ] ),
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            \WP_CLI::warning( 'Merge failed: ' . $response->get_error_message() );
+            return false;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( $code !== 200 || empty( $data['css'] ) ) {
+            \WP_CLI::warning( 'Merge failed: HTTP ' . $code );
+            return false;
+        }
+
+        \WP_CLI::log( sprintf( '  %d files → %sKB merged', count( $css_strings ), $data['sizeKB'] ?? '?' ) );
+        return $data['css'];
     }
 
     /**

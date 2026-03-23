@@ -25,7 +25,9 @@ class Critical_CSS {
     const CACHE_DIR = 'cache-party/critical-css';
 
     public function __construct() {
-        // Skip wp_head inlining when AO handles it via defer_inline.
+        // When AO is active, merged critical CSS lives in AO's defer_inline
+        // option. AO inlines it as <style id="aoatfcss">. Skip wp_head.
+        // When AO is not active, we inline per-template via wp_head.
         if ( ! self::ao_defer_active() ) {
             add_action( 'wp_head', [ $this, 'inline_critical_css' ], 2 );
         }
@@ -45,6 +47,13 @@ class Critical_CSS {
      * Only runs when AO defer is NOT active.
      */
     public function inline_critical_css() {
+        // Guard against double-firing.
+        static $done = false;
+        if ( $done ) {
+            return;
+        }
+        $done = true;
+
         $template = $this->detect_template();
         $css      = $this->get_critical_css( $template );
 
@@ -174,10 +183,6 @@ class Critical_CSS {
             $all_meta[ $template ] = $meta;
             update_option( 'cache_party_critical_meta', $all_meta, false );
 
-            // Sync to AO if active.
-            if ( self::ao_defer_active() ) {
-                AO_Bridge::sync_critical_css_to_ao();
-            }
         }
 
         return $saved;
@@ -190,11 +195,6 @@ class Critical_CSS {
 
         if ( file_exists( $file ) ) {
             wp_delete_file( $file );
-        }
-
-        // Re-sync to AO after deletion.
-        if ( self::ao_defer_active() ) {
-            AO_Bridge::sync_critical_css_to_ao();
         }
     }
 

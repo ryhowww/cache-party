@@ -7,15 +7,11 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 /**
  * Bridge between Cache Party and Autoptimize.
  *
- * Responsibilities:
- * - Sync CP's critical CSS into AO's defer_inline option
- * - Set exclusion rules so AO skips CP's elements
- * - Send preload headers after AO finishes
- * - Configure AO cache limits
+ * AO handles CSS aggregation, minification, and defer.
+ * CP's critical CSS is synced to AO's defer_inline option as a single
+ * merged/deduped string (all templates combined via clean-css on Railway).
  *
- * JS delay no longer needs AO Bridge processing — scripts use data-src
- * swap and stay in the DOM. AO sees them without src and skips them.
- * CSS defer is handled natively by AO's "Inline & Defer CSS" feature.
+ * CP handles: JS delay (data-src swap), image optimization, iframe lazy.
  */
 class AO_Bridge {
 
@@ -23,9 +19,6 @@ class AO_Bridge {
 
     public function __construct( $settings ) {
         $this->settings = $settings;
-
-        // Re-sync critical CSS to AO when AO's cache is purged.
-        add_action( 'autoptimize_action_cachepurged', [ __CLASS__, 'sync_critical_css_to_ao' ] );
 
         // Exclusions: tell AO to skip our marked elements and delayed scripts.
         add_filter( 'autoptimize_filter_js_exclude', [ $this, 'js_exclusions' ], 100000 );
@@ -51,11 +44,6 @@ class AO_Bridge {
         add_filter( 'autoptimize_html_after_minify', [ $this, 'after_minify' ] );
     }
 
-    /**
-     * JS exclusions — tell AO to skip our elements.
-     * data-cp-skip: our interaction loader and critical CSS
-     * data-type="cp-delay": delayed scripts (no src, AO would skip anyway)
-     */
     public function js_exclusions() {
         return 'data-cp-skip, data-type="cp-delay", ' . "'no-js','js'";
     }
@@ -83,49 +71,13 @@ class AO_Bridge {
     }
 
     /**
-     * Sync CP's critical CSS files into AO's defer_inline option.
+     * Sync merged critical CSS to AO's defer_inline option.
      *
-     * AO's free version has one defer_inline value for all pages.
-     * We merge all generated critical CSS files into a single deduped
-     * string so AO covers all template types. Clean-css is not available
-     * server-side, but simple concatenation with WordPress still works —
-     * duplicate rules are harmless (browser ignores them) and the total
-     * size stays manageable since critical CSS is already minimal.
-     *
-     * Called when critical CSS is generated or deleted, and when AO's
-     * cache is purged.
+     * Called by CLI after generate-critical --all merges all templates
+     * via the Railway merge-css endpoint. Stores the deduped result
+     * directly in AO's option.
      */
-    public static function sync_critical_css_to_ao() {
-        $templates = Critical_CSS::list_templates();
-
-        if ( empty( $templates ) ) {
-            update_option( 'autoptimize_css_defer_inline', '' );
-            return;
-        }
-
-        // Prioritize front-page, then merge others.
-        $parts = [];
-        $front = null;
-
-        foreach ( $templates as $t ) {
-            $css = file_get_contents( $t['file'] );
-            if ( ! $css ) {
-                continue;
-            }
-
-            if ( $t['template'] === 'front-page' ) {
-                $front = $css;
-            } else {
-                $parts[] = $css;
-            }
-        }
-
-        // Front-page first (most common landing page), then others.
-        $merged = $front ?: '';
-        if ( ! empty( $parts ) ) {
-            $merged .= "\n" . implode( "\n", $parts );
-        }
-
-        update_option( 'autoptimize_css_defer_inline', $merged );
+    public static function set_ao_defer_inline( $css ) {
+        update_option( 'autoptimize_css_defer_inline', $css );
     }
 }

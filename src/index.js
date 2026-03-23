@@ -102,6 +102,42 @@ app.post("/api/critical-css", requireAuth, async (req, res) => {
   }
 });
 
+// Merge/deduplicate multiple CSS strings
+app.post("/api/merge-css", requireAuth, async (req, res) => {
+  const { css_strings } = req.body || {};
+
+  if (!css_strings || !Array.isArray(css_strings) || css_strings.length === 0) {
+    return res.status(400).json({ error: 'Provide "css_strings" array' });
+  }
+
+  try {
+    const CleanCSS = (await import("clean-css")).default;
+    const combined = css_strings.join(" ");
+    const minified = new CleanCSS({
+      level: {
+        1: { all: true },
+        2: {
+          all: false,
+          removeDuplicateFontRules: true,
+          removeDuplicateMediaBlocks: true,
+          removeDuplicateRules: true,
+          removeEmpty: true,
+          mergeMedia: true,
+        },
+      },
+    }).minify(combined);
+
+    const output = minified.styles;
+    const sizeKB = Math.round(Buffer.byteLength(output, "utf8") / 1024);
+
+    info("MERGE-CSS", `Merged ${css_strings.length} inputs → ${sizeKB}KB`);
+    res.json({ css: output, sizeKB, inputCount: css_strings.length });
+  } catch (err) {
+    info("MERGE-CSS", `Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Cron: every 20 hours
 // node-cron doesn't support "every 20 hours" directly, so we use a workaround
 // Schedule check every hour, track last run time
