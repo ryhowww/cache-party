@@ -216,4 +216,117 @@ class Critical_CSS {
 
         return $list;
     }
+
+    /**
+     * Discover all page templates in the active theme and find a sample URL for each.
+     *
+     * Returns an array of:
+     *   [ 'slug' => 'page-service', 'name' => 'Service Page', 'file' => 'page-service.php',
+     *     'count' => 15, 'sample_url' => 'https://example.com/seo-services/',
+     *     'has_critical_css' => true ]
+     *
+     * Includes both custom page templates (page-*.php) and built-in types
+     * (front-page, single, archive, page).
+     */
+    public static function discover_templates() {
+        $templates = [];
+        $site_url  = home_url( '/' );
+
+        // 1. Front page (always relevant).
+        $front_id = get_option( 'page_on_front' );
+        $templates[] = [
+            'slug'             => 'front-page',
+            'name'             => 'Front Page',
+            'file'             => '',
+            'count'            => $front_id ? 1 : 0,
+            'sample_url'       => $site_url,
+            'has_critical_css' => ( new self() )->has_critical_css( 'front-page' ),
+        ];
+
+        // 2. Custom page templates from theme.
+        $theme_templates = wp_get_theme()->get_page_templates();
+        foreach ( $theme_templates as $file => $name ) {
+            $slug = sanitize_file_name( pathinfo( $file, PATHINFO_FILENAME ) );
+
+            // Find a sample page using this template.
+            $sample = get_posts( [
+                'post_type'      => 'page',
+                'posts_per_page' => 1,
+                'meta_key'       => '_wp_page_template',
+                'meta_value'     => $file,
+                'post_status'    => 'publish',
+            ] );
+
+            // Count pages using this template.
+            $count = (int) get_posts( [
+                'post_type'      => 'page',
+                'posts_per_page' => -1,
+                'meta_key'       => '_wp_page_template',
+                'meta_value'     => $file,
+                'post_status'    => 'publish',
+                'fields'         => 'ids',
+                'no_found_rows'  => true,
+            ] );
+
+            // Skip front page if it uses this template (already covered above).
+            $sample_url = '';
+            if ( ! empty( $sample ) ) {
+                $sample_url = get_permalink( $sample[0] );
+                if ( $front_id && $sample[0]->ID === (int) $front_id ) {
+                    // Front page uses this template — use a different page if available.
+                    $alt = get_posts( [
+                        'post_type'      => 'page',
+                        'posts_per_page' => 1,
+                        'meta_key'       => '_wp_page_template',
+                        'meta_value'     => $file,
+                        'post_status'    => 'publish',
+                        'exclude'        => [ $front_id ],
+                    ] );
+                    $sample_url = ! empty( $alt ) ? get_permalink( $alt[0] ) : '';
+                }
+            }
+
+            if ( $count > 0 ) {
+                $templates[] = [
+                    'slug'             => $slug,
+                    'name'             => $name,
+                    'file'             => $file,
+                    'count'            => $count,
+                    'sample_url'       => $sample_url,
+                    'has_critical_css' => ( new self() )->has_critical_css( $slug ),
+                ];
+            }
+        }
+
+        // 3. Built-in template types.
+        $builtins = [
+            'single'  => [ 'name' => 'Single Post', 'query' => [ 'post_type' => 'post', 'posts_per_page' => 1, 'post_status' => 'publish' ] ],
+            'archive' => [ 'name' => 'Archive', 'url' => get_post_type_archive_link( 'post' ) ],
+            'page'    => [ 'name' => 'Default Page', 'query' => [ 'post_type' => 'page', 'posts_per_page' => 1, 'post_status' => 'publish', 'meta_query' => [ [ 'key' => '_wp_page_template', 'compare' => 'NOT EXISTS' ] ] ] ],
+        ];
+
+        foreach ( $builtins as $slug => $config ) {
+            $sample_url = $config['url'] ?? '';
+
+            if ( ! $sample_url && ! empty( $config['query'] ) ) {
+                $posts = get_posts( $config['query'] );
+                if ( ! empty( $posts ) ) {
+                    $sample_url = get_permalink( $posts[0] );
+                }
+            }
+
+            if ( $sample_url ) {
+                $templates[] = [
+                    'slug'             => $slug,
+                    'name'             => $config['name'],
+                    'file'             => '',
+                    'count'            => 0,
+                    'sample_url'       => $sample_url,
+                    'has_critical_css' => ( new self() )->has_critical_css( $slug ),
+                ];
+            }
+        }
+
+        return $templates;
+    }
 }

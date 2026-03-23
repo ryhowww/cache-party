@@ -15,11 +15,14 @@ class CLI_Assets {
      *
      * ## OPTIONS
      *
-     * --template=<template>
-     * : Template slug (e.g., front-page, single, page, archive, default).
+     * [--template=<template>]
+     * : Template slug (e.g., front-page, page-service, single). Required unless --all.
      *
-     * --url=<url>
-     * : URL to extract critical CSS from.
+     * [--url=<url>]
+     * : URL to extract critical CSS from. Required unless --all.
+     *
+     * [--all]
+     * : Generate for all discovered templates. Uses auto-detected sample URLs.
      *
      * [--dimensions=<dimensions>]
      * : Override viewports (comma-separated WxH). Default: 412x896,900x1024,1300x900.
@@ -30,16 +33,24 @@ class CLI_Assets {
      * ## EXAMPLES
      *
      *     wp cache-party generate-critical --template=front-page --url=https://example.com/
-     *     wp cache-party generate-critical --template=page --url=https://example.com/about/ --dimensions=412x896,1300x900
+     *     wp cache-party generate-critical --all
+     *     wp cache-party generate-critical --all --dimensions=412x896,1300x900
      *
      * @subcommand generate-critical
      */
     public function generate_critical( $args, $assoc_args ) {
+        $all = isset( $assoc_args['all'] );
+
+        if ( $all ) {
+            $this->generate_all( $assoc_args );
+            return;
+        }
+
         $template = $assoc_args['template'] ?? '';
         $url      = $assoc_args['url'] ?? '';
 
         if ( ! $template ) {
-            \WP_CLI::error( 'Please provide --template (e.g., front-page, single, page).' );
+            \WP_CLI::error( 'Please provide --template or --all.' );
             return;
         }
 
@@ -48,14 +59,75 @@ class CLI_Assets {
             return;
         }
 
-        // Parse dimensions.
-        if ( ! empty( $assoc_args['dimensions'] ) ) {
-            $dimensions = self::parse_dimensions( $assoc_args['dimensions'] );
-        } else {
-            $dimensions = Asset_Optimizer::get_critical_dimensions();
+        $dimensions = ! empty( $assoc_args['dimensions'] )
+            ? self::parse_dimensions( $assoc_args['dimensions'] )
+            : Asset_Optimizer::get_critical_dimensions();
+
+        $this->generate_single( $template, $url, $dimensions, $assoc_args );
+    }
+
+    /**
+     * Generate critical CSS for all discovered templates.
+     */
+    private function generate_all( $assoc_args ) {
+        $templates = Critical_CSS::discover_templates();
+
+        if ( empty( $templates ) ) {
+            \WP_CLI::error( 'No templates discovered.' );
+            return;
         }
 
-        // Determine service URL.
+        $dimensions = ! empty( $assoc_args['dimensions'] )
+            ? self::parse_dimensions( $assoc_args['dimensions'] )
+            : Asset_Optimizer::get_critical_dimensions();
+
+        $dim_display = implode( ', ', array_map( function( $d ) {
+            return $d['width'] . 'x' . $d['height'];
+        }, $dimensions ) );
+
+        \WP_CLI::log( '' );
+        \WP_CLI::log( sprintf( 'Generating critical CSS for %d templates (%s)', count( $templates ), $dim_display ) );
+        \WP_CLI::log( str_repeat( '-', 70 ) );
+
+        $success = 0;
+        $skipped = 0;
+        $failed  = 0;
+
+        foreach ( $templates as $t ) {
+            if ( empty( $t['sample_url'] ) ) {
+                \WP_CLI::warning( sprintf( '  %-18s — skipped (no sample URL)', $t['slug'] ) );
+                $skipped++;
+                continue;
+            }
+
+            \WP_CLI::log( sprintf( '  %-18s — %s', $t['slug'], $t['sample_url'] ) );
+
+            $result = $this->generate_single( $t['slug'], $t['sample_url'], $dimensions, $assoc_args, false );
+            if ( $result ) {
+                $success++;
+            } else {
+                $failed++;
+            }
+        }
+
+        \WP_CLI::log( '' );
+        \WP_CLI::log( sprintf( 'Done: %d generated, %d skipped, %d failed', $success, $skipped, $failed ) );
+
+        // Sync merged critical CSS to AO.
+        if ( $success > 0 && Critical_CSS::ao_defer_active() ) {
+            AO_Bridge::sync_critical_css_to_ao();
+            \WP_CLI::log( 'Synced merged critical CSS to Autoptimize.' );
+        }
+
+        \WP_CLI::log( '' );
+    }
+
+    /**
+     * Generate critical CSS for a single template.
+     *
+     * @return bool Success
+     */
+    private function generate_single( $template, $url, $dimensions, $assoc_args, $standalone = true ) {
         $service_url = $assoc_args['service-url'] ?? '';
         if ( ! $service_url ) {
             $warmer_settings = get_option( 'cache_party_warmer', [] );
@@ -63,11 +135,14 @@ class CLI_Assets {
         }
 
         if ( ! $service_url ) {
-            \WP_CLI::error( 'No service URL configured. Use --service-url or set the warmer API URL in settings.' );
-            return;
+            if ( $standalone ) {
+                \WP_CLI::error( 'No service URL configured. Use --service-url or set the warmer API URL in settings.' );
+            } else {
+                \WP_CLI::warning( '    No service URL — skipping.' );
+            }
+            return false;
         }
 
-        // Auth token.
         $warmer_settings = get_option( 'cache_party_warmer', [] );
         $api_key         = $warmer_settings['api_key'] ?? '';
         $headers         = [ 'Content-Type' => 'application/json' ];
@@ -80,11 +155,12 @@ class CLI_Assets {
             return $d['width'] . 'x' . $d['height'];
         }, $dimensions ) );
 
-        \WP_CLI::log( sprintf( 'Template: %s', $template ) );
-        \WP_CLI::log( sprintf( 'URL: %s', $url ) );
-        \WP_CLI::log( sprintf( 'Viewports: %s', $dim_display ) );
-        \WP_CLI::log( sprintf( 'Service: %s', $endpoint ) );
-        \WP_CLI::log( '' );
+        if ( $standalone ) {
+            \WP_CLI::log( sprintf( 'Template: %s', $template ) );
+            \WP_CLI::log( sprintf( 'URL: %s', $url ) );
+            \WP_CLI::log( sprintf( 'Viewports: %s', $dim_display ) );
+            \WP_CLI::log( '' );
+        }
 
         $response = wp_remote_post( $endpoint, [
             'timeout' => 120,
@@ -97,24 +173,27 @@ class CLI_Assets {
         ] );
 
         if ( is_wp_error( $response ) ) {
-            \WP_CLI::error( 'Request failed: ' . $response->get_error_message() );
-            return;
+            $msg = 'Request failed: ' . $response->get_error_message();
+            $standalone ? \WP_CLI::error( $msg ) : \WP_CLI::warning( '    ' . $msg );
+            return false;
         }
 
         $code = wp_remote_retrieve_response_code( $response );
         $body = wp_remote_retrieve_body( $response );
 
         if ( $code !== 200 ) {
-            \WP_CLI::error( sprintf( 'Service returned HTTP %d: %s', $code, $body ) );
-            return;
+            $msg = sprintf( 'HTTP %d: %s', $code, substr( $body, 0, 200 ) );
+            $standalone ? \WP_CLI::error( $msg ) : \WP_CLI::warning( '    ' . $msg );
+            return false;
         }
 
         $data = json_decode( $body, true );
         $css  = $data['css'] ?? '';
 
         if ( empty( $css ) ) {
-            \WP_CLI::warning( 'Service returned empty CSS.' );
-            return;
+            $msg = 'Empty CSS returned.';
+            $standalone ? \WP_CLI::warning( $msg ) : \WP_CLI::warning( '    ' . $msg );
+            return false;
         }
 
         $meta = [
@@ -124,21 +203,78 @@ class CLI_Assets {
 
         $saved = Critical_CSS::save_critical_css( $template, $css, $meta );
         if ( ! $saved ) {
-            \WP_CLI::error( 'Failed to save critical CSS file.' );
-            return;
+            $msg = 'Failed to save CSS file.';
+            $standalone ? \WP_CLI::error( $msg ) : \WP_CLI::warning( '    ' . $msg );
+            return false;
         }
 
-        $path = Critical_CSS::get_css_dir() . '/' . sanitize_file_name( $template ) . '.css';
-        \WP_CLI::success( sprintf(
-            'Saved "%s" — %s (%s)',
-            $template,
-            size_format( strlen( $css ) ),
-            $dim_display
-        ) );
+        $size = size_format( strlen( $css ) );
+        if ( $standalone ) {
+            \WP_CLI::success( sprintf( 'Saved "%s" — %s (%s)', $template, $size, $dim_display ) );
+        } else {
+            \WP_CLI::log( sprintf( '    Saved — %s', $size ) );
+        }
+
+        return true;
     }
 
     /**
-     * List all generated critical CSS templates with metadata.
+     * List all page templates in the active theme with sample URLs and critical CSS status.
+     *
+     * ## EXAMPLES
+     *
+     *     wp cache-party list-templates
+     *
+     * @subcommand list-templates
+     */
+    public function list_templates( $args, $assoc_args ) {
+        $templates = Critical_CSS::discover_templates();
+
+        if ( empty( $templates ) ) {
+            \WP_CLI::log( 'No templates found.' );
+            return;
+        }
+
+        $all_meta = get_option( 'cache_party_critical_meta', [] );
+
+        \WP_CLI::log( '' );
+        \WP_CLI::log( 'Theme Templates' );
+        \WP_CLI::log( str_repeat( '-', 90 ) );
+
+        foreach ( $templates as $t ) {
+            $status = $t['has_critical_css'] ? 'YES' : ' - ';
+            $meta   = $all_meta[ $t['slug'] ] ?? [];
+            $age    = '';
+
+            if ( ! empty( $meta['generated_at'] ) ) {
+                $gen_time = strtotime( $meta['generated_at'] );
+                $days     = round( ( time() - $gen_time ) / DAY_IN_SECONDS );
+                $age      = $days === 0 ? 'today' : $days . 'd ago';
+                if ( $days > 30 ) {
+                    $age = '** ' . $age . ' (stale)';
+                }
+            }
+
+            $url_short = $t['sample_url'] ? preg_replace( '#^https?://[^/]+#', '', $t['sample_url'] ) : '(no URL)';
+
+            \WP_CLI::log( sprintf(
+                '  [%s] %-18s %3d pages  %-30s  %s',
+                $status,
+                $t['slug'],
+                $t['count'],
+                $url_short,
+                $age
+            ) );
+        }
+
+        \WP_CLI::log( '' );
+        \WP_CLI::log( '  [YES] = critical CSS generated, [ - ] = not yet generated' );
+        \WP_CLI::log( '  Run: wp cache-party generate-critical --all' );
+        \WP_CLI::log( '' );
+    }
+
+    /**
+     * List generated critical CSS files with metadata.
      *
      * ## EXAMPLES
      *
@@ -157,7 +293,7 @@ class CLI_Assets {
         $all_meta = get_option( 'cache_party_critical_meta', [] );
 
         \WP_CLI::log( '' );
-        \WP_CLI::log( 'Critical CSS Templates' );
+        \WP_CLI::log( 'Generated Critical CSS' );
         \WP_CLI::log( str_repeat( '-', 70 ) );
 
         foreach ( $templates as $t ) {

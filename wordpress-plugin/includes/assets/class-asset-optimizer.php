@@ -66,6 +66,7 @@ class Asset_Optimizer {
         if ( defined( 'WP_CLI' ) && WP_CLI ) {
             $cli = new CLI_Assets();
             \WP_CLI::add_command( 'cache-party generate-critical', [ $cli, 'generate_critical' ] );
+            \WP_CLI::add_command( 'cache-party list-templates', [ $cli, 'list_templates' ] );
             \WP_CLI::add_command( 'cache-party list-critical', [ $cli, 'list_critical' ] );
             \WP_CLI::add_command( 'cache-party delete-critical', [ $cli, 'delete_critical' ] );
         }

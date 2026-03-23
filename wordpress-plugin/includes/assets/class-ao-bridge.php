@@ -85,17 +85,47 @@ class AO_Bridge {
     /**
      * Sync CP's critical CSS files into AO's defer_inline option.
      *
+     * AO's free version has one defer_inline value for all pages.
+     * We merge all generated critical CSS files into a single deduped
+     * string so AO covers all template types. Clean-css is not available
+     * server-side, but simple concatenation with WordPress still works —
+     * duplicate rules are harmless (browser ignores them) and the total
+     * size stays manageable since critical CSS is already minimal.
+     *
      * Called when critical CSS is generated or deleted, and when AO's
-     * cache is purged. Uses front-page CSS as the baseline.
+     * cache is purged.
      */
     public static function sync_critical_css_to_ao() {
-        $ccss = new Critical_CSS();
-        $css = $ccss->get_critical_css( 'front-page' );
+        $templates = Critical_CSS::list_templates();
 
-        if ( ! $css ) {
-            $css = $ccss->get_critical_css( 'default' );
+        if ( empty( $templates ) ) {
+            update_option( 'autoptimize_css_defer_inline', '' );
+            return;
         }
 
-        update_option( 'autoptimize_css_defer_inline', $css ?: '' );
+        // Prioritize front-page, then merge others.
+        $parts = [];
+        $front = null;
+
+        foreach ( $templates as $t ) {
+            $css = file_get_contents( $t['file'] );
+            if ( ! $css ) {
+                continue;
+            }
+
+            if ( $t['template'] === 'front-page' ) {
+                $front = $css;
+            } else {
+                $parts[] = $css;
+            }
+        }
+
+        // Front-page first (most common landing page), then others.
+        $merged = $front ?: '';
+        if ( ! empty( $parts ) ) {
+            $merged .= "\n" . implode( "\n", $parts );
+        }
+
+        update_option( 'autoptimize_css_defer_inline', $merged );
     }
 }
