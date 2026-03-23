@@ -25,45 +25,47 @@ class Settings {
     }
 
     public function register_settings() {
-        register_setting( 'cache_party', 'cache_party_modules', [
+        // Each tab uses its own settings group so saving one tab
+        // doesn't clear options from other tabs.
+        register_setting( 'cache_party_general', 'cache_party_modules', [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_modules' ],
             'default'           => [ 'images' ],
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party', 'cache_party_images', [
+        register_setting( 'cache_party_general', 'cache_party_cleanup', [
+            'type'              => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default'           => false,
+            'show_in_rest'      => false,
+        ] );
+
+        register_setting( 'cache_party_images', 'cache_party_images', [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_images' ],
             'default'           => self::image_defaults(),
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party', 'cache_party_assets', [
+        register_setting( 'cache_party_assets', 'cache_party_assets', [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_assets' ],
             'default'           => self::asset_defaults(),
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party', 'cache_party_warmer', [
+        register_setting( 'cache_party_warmer', 'cache_party_warmer', [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_warmer' ],
             'default'           => [],
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party', 'cache_party_cloudflare', [
+        register_setting( 'cache_party_cloudflare', 'cache_party_cloudflare', [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_cloudflare' ],
             'default'           => [],
-            'show_in_rest'      => false,
-        ] );
-
-        register_setting( 'cache_party', 'cache_party_cleanup', [
-            'type'              => 'boolean',
-            'sanitize_callback' => 'rest_sanitize_boolean',
-            'default'           => false,
             'show_in_rest'      => false,
         ] );
     }
@@ -195,7 +197,7 @@ class Settings {
 
             <form method="post" action="<?php echo esc_url( admin_url( 'options.php' ) ); ?>">
                 <?php
-                settings_fields( 'cache_party' );
+                settings_fields( 'cache_party_' . $current_tab );
 
                 // Hidden field to redirect back to current tab after save.
                 echo '<input type="hidden" name="_wp_http_referer" value="' . esc_attr( add_query_arg( 'tab', $current_tab, admin_url( 'admin.php?page=cache-party' ) ) ) . '" />';
