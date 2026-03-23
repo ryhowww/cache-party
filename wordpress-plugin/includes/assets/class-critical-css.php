@@ -36,7 +36,7 @@ class Critical_CSS {
         }
 
         if ( $css ) {
-            echo '<style id="cp-critical-css" data-cp-skip>' . "\n" . $css . "\n" . '</style>' . "\n";
+            echo '<!--noptimize--><style id="cp-critical-css" data-template="' . esc_attr( $template ) . '" data-cp-skip>' . "\n" . $css . "\n" . '</style><!--/noptimize-->' . "\n";
         }
     }
 

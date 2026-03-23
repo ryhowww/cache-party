@@ -25,6 +25,9 @@ class Plugin {
         new Meta_Box();
         new Cloudflare();
 
+        // Critical CSS: always active if files exist.
+        new Assets\Critical_CSS();
+
         // Debug overlay: only on front end with ?perf-debug=1.
         if ( ! is_admin() ) {
             new Debug();
