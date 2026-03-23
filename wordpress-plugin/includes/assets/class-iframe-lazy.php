@@ -12,12 +12,6 @@ class Iframe_Lazy {
         $this->exclude_keywords = array_filter(
             array_map( 'trim', explode( "\n", $settings['iframe_exclude_keywords'] ?? '' ) )
         );
-
-        add_action( 'template_redirect', [ $this, 'start_buffer' ], 5 );
-    }
-
-    public function start_buffer() {
-        ob_start( [ $this, 'process_buffer' ] );
     }
 
     public function process_buffer( $content ) {

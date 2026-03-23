@@ -17,12 +17,17 @@ class Image_Optimizer {
         // WebP converter always loads (needs delete_attachment hook even if disabled).
         new WebP_Converter( $this->settings );
 
+        // Register image processors with the single Output_Buffer.
+        $buffer = \CacheParty\Output_Buffer::instance();
+
         if ( $this->settings['picture_enabled'] ) {
-            new Picture_Wrapper( $this->settings );
+            $picture = new Picture_Wrapper( $this->settings );
+            $buffer->add_processor( 999, [ $picture, 'rewrite_images_to_picture' ] );
         }
 
         if ( $this->settings['lazy_enabled'] ) {
-            new Lazy_Loader( $this->settings );
+            $lazy = new Lazy_Loader( $this->settings );
+            $buffer->add_processor( 1000, [ $lazy, 'process_images' ] );
         }
 
         if ( $this->settings['auto_alt_enabled'] ) {

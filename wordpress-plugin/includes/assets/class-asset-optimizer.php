@@ -14,11 +14,20 @@ class Asset_Optimizer {
             \CacheParty\Settings::asset_defaults()
         );
 
-        // Output buffer — the core pipeline.
-        if ( $this->settings['css_defer_enabled'] || $this->settings['js_delay_enabled'] ) {
-            new CSS_Deferral( $this->settings );
-            new JS_Delay( $this->settings );
+        // Output buffer — register processors with the single Output_Buffer.
+        $buffer = \CacheParty\Output_Buffer::instance();
 
+        if ( $this->settings['css_defer_enabled'] ) {
+            $css = new CSS_Deferral( $this->settings );
+            $buffer->add_processor( 3, [ $css, 'process_buffer' ] );
+        }
+
+        if ( $this->settings['js_delay_enabled'] ) {
+            $js = new JS_Delay( $this->settings );
+            $buffer->add_processor( 4, [ $js, 'process_buffer' ] );
+        }
+
+        if ( $this->settings['css_defer_enabled'] || $this->settings['js_delay_enabled'] ) {
             // Enqueue interaction loader.
             add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_loader' ], 1 );
 
@@ -27,7 +36,8 @@ class Asset_Optimizer {
         }
 
         if ( $this->settings['iframe_lazy_enabled'] ) {
-            new Iframe_Lazy( $this->settings );
+            $iframe = new Iframe_Lazy( $this->settings );
+            $buffer->add_processor( 5, [ $iframe, 'process_buffer' ] );
         }
 
         // Critical CSS (always active — inlines if files exist).

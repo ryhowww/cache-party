@@ -19,17 +19,6 @@ class Lazy_Loader {
     public function __construct( $settings ) {
         $this->eager_count      = isset( $settings['eager_count'] ) ? (int) $settings['eager_count'] : 2;
         $this->exclude_keywords = array_filter( array_map( 'trim', explode( "\n", $settings['exclude_keywords'] ?? '' ) ) );
-
-        // Output buffer at priority 1000 (after Picture Wrapper at 999).
-        add_action( 'template_redirect', [ $this, 'start_buffer' ], 1000 );
-    }
-
-    public function start_buffer() {
-        if ( is_admin() || wp_doing_ajax() || is_feed() || defined( 'REST_REQUEST' ) ) {
-            return;
-        }
-
-        ob_start( [ $this, 'process_images' ] );
     }
 
     public function process_images( $content ) {

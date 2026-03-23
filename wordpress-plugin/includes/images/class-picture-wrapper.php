@@ -10,19 +10,6 @@ class Picture_Wrapper {
 
     public function __construct( $settings ) {
         $this->exclude_keywords = array_filter( array_map( 'trim', explode( "\n", $settings['exclude_keywords'] ?? '' ) ) );
-
-        // Use output buffer to catch ALL images on the page (theme templates,
-        // widgets, shortcodes, header, footer) — not just the_content.
-        add_action( 'template_redirect', [ $this, 'start_buffer' ], 999 );
-    }
-
-    public function start_buffer() {
-        // Only run on frontend, skip admin/AJAX/feeds/REST.
-        if ( is_admin() || wp_doing_ajax() || is_feed() || defined( 'REST_REQUEST' ) ) {
-            return;
-        }
-
-        ob_start( [ $this, 'rewrite_images_to_picture' ] );
     }
 
     public function rewrite_images_to_picture( $content ) {

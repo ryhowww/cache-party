@@ -6,6 +6,7 @@ spl_autoload_register( function ( $class_name ) {
     $classes = [
         'CacheParty\\Plugin'                    => __DIR__ . '/class-plugin.php',
         'CacheParty\\Module_Loader'             => __DIR__ . '/class-module-loader.php',
+        'CacheParty\\Output_Buffer'             => __DIR__ . '/class-output-buffer.php',
         'CacheParty\\Settings'                  => __DIR__ . '/class-settings.php',
         'CacheParty\\Images\\Image_Optimizer'   => __DIR__ . '/images/class-image-optimizer.php',
         'CacheParty\\Images\\WebP_Converter'    => __DIR__ . '/images/class-webp-converter.php',

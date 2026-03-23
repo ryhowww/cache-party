@@ -10,14 +10,6 @@ class JS_Delay {
 
     public function __construct( $settings ) {
         $this->settings = $settings;
-
-        if ( $settings['js_delay_enabled'] ) {
-            add_action( 'template_redirect', [ $this, 'start_buffer' ], 4 );
-        }
-    }
-
-    public function start_buffer() {
-        ob_start( [ $this, 'process_buffer' ] );
     }
 
     public function process_buffer( $content ) {
