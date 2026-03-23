@@ -32,9 +32,11 @@ class Warmer_Client {
         add_action( 'rest_api_init', [ $this, 'register_rest_route' ] );
     }
 
+    const DEFAULT_API_URL = 'https://api.cacheparty.com';
+
     public static function defaults() {
         return [
-            'api_url'   => '',
+            'api_url'   => self::DEFAULT_API_URL,
             'api_key'   => '',
             'site_name' => '',
         ];

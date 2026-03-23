@@ -521,6 +521,98 @@ class Settings {
             </tr>
         </table>
 
+        <h2>Critical CSS</h2>
+        <p class="description">Generate above-the-fold CSS per template type. Inlined in &lt;head&gt; to prevent FOUC when CSS deferral is active.</p>
+
+        <?php
+        $templates = \CacheParty\Assets\Critical_CSS::list_templates();
+        $warmer    = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
+        $has_api   = ! empty( $warmer['api_url'] ) && ! empty( $warmer['api_key'] );
+        ?>
+
+        <?php if ( ! $has_api ) : ?>
+            <div class="notice notice-warning inline" style="margin-bottom:1em;">
+                <p>Configure the API URL and key on the Warmer tab to enable critical CSS generation.</p>
+            </div>
+        <?php endif; ?>
+
+        <table class="widefat striped" style="max-width:600px;">
+            <thead>
+                <tr>
+                    <th>Template</th>
+                    <th>Status</th>
+                    <th>Size</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                $template_types = [ 'front-page', 'page', 'single', 'archive', 'category', 'search', '404', 'default' ];
+                foreach ( $template_types as $tpl ) :
+                    $existing = null;
+                    foreach ( $templates as $t ) {
+                        if ( $t['template'] === $tpl ) { $existing = $t; break; }
+                    }
+                ?>
+                <tr>
+                    <td><code><?php echo esc_html( $tpl ); ?></code></td>
+                    <td><?php echo $existing ? '<span style="color:#46b450;">Generated</span>' : '<span style="color:#999;">Not generated</span>'; ?></td>
+                    <td><?php echo $existing ? esc_html( size_format( $existing['size'] ) ) : '&mdash;'; ?></td>
+                    <td>
+                        <?php if ( $has_api ) : ?>
+                            <button type="button" class="button cp-generate-critical" data-template="<?php echo esc_attr( $tpl ); ?>">
+                                <?php echo $existing ? 'Regenerate' : 'Generate'; ?>
+                            </button>
+                            <span class="cp-critical-status" style="margin-left:8px;"></span>
+                        <?php else : ?>
+                            <button type="button" class="button" disabled>Generate</button>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <p style="margin-top:12px;">
+            <label for="cp-critical-url"><strong>URL to analyze:</strong></label>
+            <input type="text" id="cp-critical-url" class="regular-text" value="<?php echo esc_attr( home_url( '/' ) ); ?>" placeholder="<?php echo esc_attr( home_url( '/' ) ); ?>" />
+            <span class="description">Change this per template type (e.g., use a blog post URL for "single").</span>
+        </p>
+
+        <input type="hidden" id="cp-critical-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_critical' ) ); ?>">
+
+        <script>
+        jQuery(function($) {
+            $('.cp-generate-critical').on('click', function() {
+                var $btn = $(this);
+                var $status = $btn.siblings('.cp-critical-status');
+                var template = $btn.data('template');
+                var url = $('#cp-critical-url').val();
+
+                $btn.prop('disabled', true);
+                $status.text('Generating...');
+
+                $.post(ajaxurl, {
+                    action: 'cache_party_generate_critical',
+                    nonce: $('#cp-critical-nonce').val(),
+                    template: template,
+                    url: url
+                }).done(function(res) {
+                    if (res.success) {
+                        $status.html('<span style="color:#46b450;">' + res.data.message + '</span>');
+                        setTimeout(function() { location.reload(); }, 2000);
+                    } else {
+                        $status.html('<span style="color:#dc3232;">' + (res.data ? res.data.message : 'Failed') + '</span>');
+                    }
+                }).fail(function() {
+                    $status.html('<span style="color:#dc3232;">Request failed.</span>');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+        });
+        </script>
+
         <?php do_action( 'cache_party_after_assets_settings' ); ?>
         <?php
     }
@@ -538,8 +630,8 @@ class Settings {
                 <td>
                     <input type="url" name="cache_party_warmer[api_url]" id="cp_warmer_api_url"
                            value="<?php echo esc_attr( $settings['api_url'] ); ?>"
-                           class="regular-text" placeholder="https://cacheparty.com" />
-                    <p class="description">Base URL of your cache warmer service.</p>
+                           class="regular-text" placeholder="https://api.cacheparty.com" />
+                    <p class="description">Base URL of the Cache Party API. Default: https://api.cacheparty.com</p>
                 </td>
             </tr>
             <tr>
@@ -548,7 +640,7 @@ class Settings {
                     <input type="text" name="cache_party_warmer[api_key]" id="cp_warmer_api_key"
                            value="<?php echo esc_attr( $settings['api_key'] ); ?>"
                            class="regular-text" placeholder="Bearer token" />
-                    <p class="description">AUTH_TOKEN configured in your Railway warmer environment.</p>
+                    <p class="description">Your Cache Party API key. Same key works across all sites.</p>
                 </td>
             </tr>
             <tr>

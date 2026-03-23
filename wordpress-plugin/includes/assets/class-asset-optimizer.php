@@ -46,6 +46,11 @@ class Asset_Optimizer {
             $this->auto_detect_plugins();
         }
 
+        // Admin AJAX: generate critical CSS.
+        if ( is_admin() ) {
+            add_action( 'wp_ajax_cache_party_generate_critical', [ $this, 'ajax_generate_critical' ] );
+        }
+
         // WP-CLI commands for assets.
         if ( defined( 'WP_CLI' ) && WP_CLI ) {
             $cli = new CLI_Assets();
@@ -109,5 +114,68 @@ class Asset_Optimizer {
                 break;
             }
         }
+    }
+
+    /**
+     * AJAX: Generate critical CSS for a template.
+     */
+    public function ajax_generate_critical() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+
+        $template = isset( $_POST['template'] ) ? sanitize_text_field( $_POST['template'] ) : '';
+        $url      = isset( $_POST['url'] ) ? esc_url_raw( $_POST['url'] ) : '';
+
+        if ( ! $template || ! $url ) {
+            wp_send_json_error( [ 'message' => 'Template and URL are required.' ] );
+        }
+
+        $warmer = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
+        $api_url = $warmer['api_url'] ?? '';
+        $api_key = $warmer['api_key'] ?? '';
+
+        if ( ! $api_url || ! $api_key ) {
+            wp_send_json_error( [ 'message' => 'API URL and key not configured.' ] );
+        }
+
+        $endpoint = rtrim( $api_url, '/' ) . '/api/critical-css';
+
+        $response = wp_remote_post( $endpoint, [
+            'timeout' => 60,
+            'headers' => [
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ],
+            'body' => wp_json_encode( [
+                'url'            => $url,
+                'viewport_width' => 1300,
+            ] ),
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( [ 'message' => $response->get_error_message() ] );
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( $code !== 200 || empty( $body['css'] ) ) {
+            $err = $body['error'] ?? "HTTP {$code}";
+            wp_send_json_error( [ 'message' => 'Generation failed: ' . $err ] );
+        }
+
+        $saved = Critical_CSS::save_critical_css( $template, $body['css'] );
+        if ( ! $saved ) {
+            wp_send_json_error( [ 'message' => 'Failed to save CSS file.' ] );
+        }
+
+        wp_send_json_success( [
+            'message'  => 'Generated! ' . size_format( strlen( $body['css'] ) ),
+            'template' => $template,
+            'size'     => strlen( $body['css'] ),
+        ] );
     }
 }
