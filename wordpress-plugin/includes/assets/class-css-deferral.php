@@ -4,15 +4,28 @@ namespace CacheParty\Assets;
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+/**
+ * CSS processing for the output buffer.
+ *
+ * When AO is active: only handles delete-by-keyword. AO owns aggregation,
+ * minification, and defer (media="print" onload). Critical CSS is fed to
+ * AO's defer_inline by the AO_Bridge class.
+ *
+ * When AO is NOT active: handles delete-by-keyword AND defer via
+ * media="print" onload on <link> stylesheets. Inline <style> blocks that
+ * match defer keywords go into a noscript for the interaction loader.
+ */
 class CSS_Deferral {
 
     private $settings;
+    private $ao_active;
     private $deferred_links   = '';
     private $deferred_inlines = '';
     private $head_styles      = '';
 
     public function __construct( $settings ) {
-        $this->settings = $settings;
+        $this->settings  = $settings;
+        $this->ao_active = defined( 'AUTOPTIMIZE_PLUGIN_VERSION' );
     }
 
     public function process_buffer( $content ) {
@@ -20,17 +33,66 @@ class CSS_Deferral {
             return $content;
         }
 
+        // When AO is active, it handles CSS aggregation and defer.
+        // We only need to process delete-by-keyword here.
+        if ( $this->ao_active ) {
+            return $this->process_deletes_only( $content );
+        }
+
+        // Standalone mode (no AO): full CSS deferral pipeline.
+        return $this->process_standalone( $content );
+    }
+
+    /**
+     * AO-active mode: only delete stylesheets by keyword.
+     * AO handles everything else (aggregation, defer, critical CSS inline).
+     */
+    private function process_deletes_only( $content ) {
+        $delete_kw = $this->keywords_from_setting( 'css_delete_keywords' );
+        $delete_kw = apply_filters( 'cp_delete_style_kw', $delete_kw );
+
+        if ( empty( $delete_kw ) ) {
+            return $content;
+        }
+
+        $content = preg_replace_callback(
+            '#(<style[^>]*>.*</style>)|(<link[^>]*stylesheet[^>]*>)#Usmi',
+            function( $matches ) use ( $delete_kw ) {
+                $tag    = $matches[0];
+                $inline = $matches[1] ?? '';
+                $link   = $matches[2] ?? '';
+
+                foreach ( $delete_kw as $kw ) {
+                    if ( $kw !== '' && ( stripos( $inline, $kw ) !== false || stripos( $link, $kw ) !== false ) ) {
+                        return '';
+                    }
+                }
+
+                return $tag;
+            },
+            $content
+        );
+
+        return $content;
+    }
+
+    /**
+     * Standalone mode (no AO): delete + defer CSS.
+     * <link> stylesheets get media="print" onload (non-render-blocking).
+     * Inline <style> blocks go into noscript for interaction loader.
+     */
+    private function process_standalone( $content ) {
         $this->deferred_links   = '';
         $this->deferred_inlines = '';
         $this->head_styles      = '';
 
-        $delete_kw  = $this->keywords_from_setting( 'css_delete_keywords' );
-        $defer_kw   = $this->keywords_from_setting( 'css_defer_keywords' );
-        $except_kw  = $this->keywords_from_setting( 'css_defer_except' );
+        $delete_kw = $this->keywords_from_setting( 'css_delete_keywords' );
+        $defer_kw  = $this->keywords_from_setting( 'css_defer_keywords' );
+        $except_kw = $this->keywords_from_setting( 'css_defer_except' );
 
-        $delete_kw = apply_filters( 'cp_delete_style_kw', apply_filters( 'aoc_delete_srtyle_kw', $delete_kw ) );
-        $defer_kw  = apply_filters( 'cp_defer_style_kw', apply_filters( 'aoc_defer_srtyle_kw', $defer_kw ) );
-        $except_kw = apply_filters( 'cp_defer_style_except_kw', apply_filters( 'aoc_defer_srtyle_except_kw', $except_kw ) );
+        $delete_kw = apply_filters( 'cp_delete_style_kw', $delete_kw );
+        $defer_kw  = apply_filters( 'cp_defer_style_kw', $defer_kw );
+        $except_kw = apply_filters( 'cp_defer_style_except_kw', $except_kw );
 
         $content = preg_replace_callback(
             '#(<style[^>]*>.*</style>)|(<link[^>]*stylesheet[^>]*>)#Usmi',
@@ -40,34 +102,29 @@ class CSS_Deferral {
             $content
         );
 
-        // Put excepted/head styles back in <head>.
         $content = str_replace( '</head>', "\r\n" . $this->head_styles . "\r\n" . '</head>', $content );
 
-        // Deferred <link> stylesheets: use media="print" onload pattern.
-        // They load immediately but non-render-blocking — no 5-second delay.
-        // Deferred inline <style> blocks: keep in noscript for AO Bridge compat.
         $before_body = '';
-
         if ( $this->deferred_links !== '' ) {
             $before_body .= "\r\n" . $this->deferred_links;
         }
+        if ( $this->deferred_inlines !== '' ) {
+            $before_body .= '<noscript id="deferred-styles">' . "\r\n" . $this->deferred_inlines . "\r\n" . '</noscript>';
+        }
 
-        // The noscript block holds deferred inline styles (for AO Bridge to
-        // extract and process). Even if empty, keep the block so AO Bridge's
-        // regex doesn't fail if it's looking for it.
-        $before_body .= '<noscript id="deferred-styles">' . "\r\n" . $this->deferred_inlines . "\r\n" . '</noscript>';
-
-        $content = str_replace( '</body>', $before_body . '</body>', $content );
+        if ( $before_body !== '' ) {
+            $content = str_replace( '</body>', $before_body . '</body>', $content );
+        }
 
         return $content;
     }
 
     private function process_style( $matches, $delete_kw, $defer_kw, $except_kw ) {
-        $tag     = $matches[0];
-        $inline  = $matches[1] ?? '';
-        $link    = $matches[2] ?? '';
+        $tag    = $matches[0];
+        $inline = $matches[1] ?? '';
+        $link   = $matches[2] ?? '';
 
-        if ( strpos( $tag, 'data-cp-skip' ) !== false || strpos( $tag, 'data-aoc-skip' ) !== false ) {
+        if ( strpos( $tag, 'data-cp-skip' ) !== false ) {
             $this->head_styles .= $tag;
             return '';
         }
@@ -103,21 +160,13 @@ class CSS_Deferral {
         return '';
     }
 
-    /**
-     * Defer a style tag using the appropriate technique:
-     * - <link> stylesheets: media="print" onload="this.media='all'" (loads
-     *   immediately, non-render-blocking, no JS delay needed)
-     * - Inline <style>: noscript block (for AO Bridge extraction)
-     */
     private function defer_tag( $tag, $link ) {
         if ( $link !== '' ) {
-            // Extract the real media value to restore on load.
             $media = 'all';
             if ( preg_match( '/\bmedia=["\']([^"\']+)["\']/i', $link, $m ) ) {
                 $media = $m[1];
             }
 
-            // Rewrite to media="print" with onload swap.
             $deferred = preg_replace( '/\bmedia=["\'][^"\']*["\']/i', '', $link );
             $deferred = str_replace(
                 '<link',

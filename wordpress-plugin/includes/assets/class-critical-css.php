@@ -7,8 +7,13 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 /**
  * Template-based critical CSS.
  *
- * Static CSS files stored in wp-content/cache/cache-party/critical-css/{template}.css.
- * On page load, detects the current template and inlines matching critical CSS in <head>.
+ * Static CSS files stored in wp-content/uploads/cache-party/critical-css/{template}.css.
+ *
+ * When AO's "Inline & Defer CSS" is active, the AO_Bridge feeds our critical
+ * CSS into AO's defer_inline filter — AO handles the inlining. We skip our
+ * own wp_head injection to avoid double-inlining.
+ *
+ * When AO is not active (or AO defer is off), we inline directly via wp_head.
  *
  * Generate via WP-CLI:
  *   wp cache-party generate-critical --template=front-page --url=https://example.com/
@@ -20,18 +25,30 @@ class Critical_CSS {
     const CACHE_DIR = 'cache-party/critical-css';
 
     public function __construct() {
-        add_action( 'wp_head', [ $this, 'inline_critical_css' ], 2 );
+        // Skip wp_head inlining when AO handles it via defer_inline.
+        if ( ! self::ao_defer_active() ) {
+            add_action( 'wp_head', [ $this, 'inline_critical_css' ], 2 );
+        }
+    }
+
+    /**
+     * Check if AO's "Inline & Defer CSS" is active.
+     * When it is, AO_Bridge feeds our critical CSS into AO's pipeline.
+     */
+    public static function ao_defer_active() {
+        return defined( 'AUTOPTIMIZE_PLUGIN_VERSION' )
+            && get_option( 'autoptimize_css_defer', '' ) === 'on';
     }
 
     /**
      * Detect current template and inline matching critical CSS.
+     * Only runs when AO defer is NOT active.
      */
     public function inline_critical_css() {
         $template = $this->detect_template();
         $css      = $this->get_critical_css( $template );
 
         if ( ! $css ) {
-            // Fall back to "default" template.
             $css = $this->get_critical_css( 'default' );
         }
 
@@ -42,13 +59,8 @@ class Critical_CSS {
 
     /**
      * Detect the current WordPress template type.
-     *
-     * Priority: custom template slug → page/single/archive type → front-page → default.
-     *
-     * @return string Template slug.
      */
     public function detect_template() {
-        // Custom page template (e.g., "page-contact.php" → "page-contact").
         if ( is_page_template() ) {
             $slug = get_page_template_slug();
             if ( $slug ) {
@@ -104,12 +116,6 @@ class Critical_CSS {
         return 'default';
     }
 
-    /**
-     * Get critical CSS content for a template.
-     *
-     * @param string $template Template slug.
-     * @return string|false CSS content or false.
-     */
     public function get_critical_css( $template ) {
         $file = $this->get_css_path( $template );
         if ( $file && file_exists( $file ) ) {
@@ -118,17 +124,11 @@ class Critical_CSS {
         return false;
     }
 
-    /**
-     * Check if critical CSS exists for a template.
-     */
     public function has_critical_css( $template ) {
         $file = $this->get_css_path( $template );
         return $file && file_exists( $file );
     }
 
-    /**
-     * Get the filesystem path for a template's critical CSS file.
-     */
     public function get_css_path( $template ) {
         $template = sanitize_file_name( $template );
         if ( ! $template ) {
@@ -138,21 +138,11 @@ class Critical_CSS {
         return $upload_dir['basedir'] . '/' . self::CACHE_DIR . '/' . $template . '.css';
     }
 
-    /**
-     * Get the directory where critical CSS files are stored.
-     */
     public static function get_css_dir() {
         $upload_dir = wp_get_upload_dir();
         return $upload_dir['basedir'] . '/' . self::CACHE_DIR;
     }
 
-    /**
-     * Save critical CSS for a template.
-     *
-     * @param string $template Template slug.
-     * @param string $css      CSS content.
-     * @return bool
-     */
     public static function save_critical_css( $template, $css ) {
         $dir = self::get_css_dir();
         if ( ! wp_mkdir_p( $dir ) ) {
@@ -162,12 +152,17 @@ class Critical_CSS {
         $template = sanitize_file_name( $template );
         $file     = $dir . '/' . $template . '.css';
 
-        return (bool) file_put_contents( $file, $css );
+        $saved = (bool) file_put_contents( $file, $css );
+
+        // If AO defer is active, also update AO's defer_inline so AO
+        // inlines the latest critical CSS on next page load.
+        if ( $saved && self::ao_defer_active() ) {
+            AO_Bridge::sync_critical_css_to_ao();
+        }
+
+        return $saved;
     }
 
-    /**
-     * Delete critical CSS for a template.
-     */
     public static function delete_critical_css( $template ) {
         $dir      = self::get_css_dir();
         $template = sanitize_file_name( $template );
@@ -176,13 +171,13 @@ class Critical_CSS {
         if ( file_exists( $file ) ) {
             wp_delete_file( $file );
         }
+
+        // Re-sync to AO after deletion.
+        if ( self::ao_defer_active() ) {
+            AO_Bridge::sync_critical_css_to_ao();
+        }
     }
 
-    /**
-     * List all generated critical CSS templates.
-     *
-     * @return array [ 'template' => 'front-page', 'file' => '/path/to.css', 'size' => 1234 ]
-     */
     public static function list_templates() {
         $dir  = self::get_css_dir();
         $list = [];

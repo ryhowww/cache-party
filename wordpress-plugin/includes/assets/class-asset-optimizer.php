@@ -27,8 +27,9 @@ class Asset_Optimizer {
             $buffer->add_processor( 4, [ $js, 'process_buffer' ] );
         }
 
-        if ( $this->settings['css_defer_enabled'] || $this->settings['js_delay_enabled'] ) {
-            // Enqueue interaction loader.
+        if ( $this->settings['js_delay_enabled'] ) {
+            // Interaction loader only needed for JS delay (CSS defer is
+            // handled by AO's media="print" onload or our standalone defer).
             add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_loader' ], 1 );
 
             // Body class for scroll state tracking.
