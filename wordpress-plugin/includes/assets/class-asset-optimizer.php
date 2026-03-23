@@ -128,7 +128,23 @@ class Asset_Optimizer {
     }
 
     /**
-     * AJAX: Generate critical CSS for a template.
+     * Get the configured critical CSS viewport dimensions.
+     *
+     * @return array Array of { width, height } arrays.
+     */
+    public static function get_critical_dimensions() {
+        $defaults = [
+            [ 'width' => 412, 'height' => 896 ],
+            [ 'width' => 900, 'height' => 1024 ],
+            [ 'width' => 1300, 'height' => 900 ],
+        ];
+
+        $saved = get_option( 'cache_party_critical_dimensions', [] );
+        return ! empty( $saved ) ? $saved : $defaults;
+    }
+
+    /**
+     * AJAX: Generate critical CSS for a template (multi-viewport).
      */
     public function ajax_generate_critical() {
         check_ajax_referer( 'cache_party_critical', 'nonce' );
@@ -152,17 +168,19 @@ class Asset_Optimizer {
             wp_send_json_error( [ 'message' => 'API URL and key not configured.' ] );
         }
 
-        $endpoint = rtrim( $api_url, '/' ) . '/api/critical-css';
+        $endpoint   = rtrim( $api_url, '/' ) . '/api/critical-css';
+        $dimensions = self::get_critical_dimensions();
 
         $response = wp_remote_post( $endpoint, [
-            'timeout' => 60,
+            'timeout' => 120,
             'headers' => [
                 'Content-Type'  => 'application/json',
                 'Authorization' => 'Bearer ' . $api_key,
             ],
             'body' => wp_json_encode( [
-                'url'            => $url,
-                'viewport_width' => 1300,
+                'url'        => $url,
+                'template'   => $template,
+                'dimensions' => $dimensions,
             ] ),
         ] );
 
@@ -178,15 +196,21 @@ class Asset_Optimizer {
             wp_send_json_error( [ 'message' => 'Generation failed: ' . $err ] );
         }
 
-        $saved = Critical_CSS::save_critical_css( $template, $body['css'] );
+        $meta = [
+            'dimensions'  => $body['dimensions'] ?? [],
+            'source_url'  => $url,
+        ];
+
+        $saved = Critical_CSS::save_critical_css( $template, $body['css'], $meta );
         if ( ! $saved ) {
             wp_send_json_error( [ 'message' => 'Failed to save CSS file.' ] );
         }
 
         wp_send_json_success( [
-            'message'  => 'Generated! ' . size_format( strlen( $body['css'] ) ),
-            'template' => $template,
-            'size'     => strlen( $body['css'] ),
+            'message'    => 'Generated! ' . size_format( strlen( $body['css'] ) ),
+            'template'   => $template,
+            'size'       => strlen( $body['css'] ),
+            'dimensions' => $body['dimensions'] ?? [],
         ] );
     }
 }

@@ -143,7 +143,15 @@ class Critical_CSS {
         return $upload_dir['basedir'] . '/' . self::CACHE_DIR;
     }
 
-    public static function save_critical_css( $template, $css ) {
+    /**
+     * Save critical CSS and optional metadata for a template.
+     *
+     * @param string $template Template slug.
+     * @param string $css      CSS content.
+     * @param array  $meta     Optional metadata (dimensions, source_url, etc.).
+     * @return bool
+     */
+    public static function save_critical_css( $template, $css, $meta = [] ) {
         $dir = self::get_css_dir();
         if ( ! wp_mkdir_p( $dir ) ) {
             return false;
@@ -154,10 +162,22 @@ class Critical_CSS {
 
         $saved = (bool) file_put_contents( $file, $css );
 
-        // If AO defer is active, also update AO's defer_inline so AO
-        // inlines the latest critical CSS on next page load.
-        if ( $saved && self::ao_defer_active() ) {
-            AO_Bridge::sync_critical_css_to_ao();
+        if ( $saved ) {
+            // Store metadata alongside the CSS.
+            $meta = array_merge( [
+                'template'     => $template,
+                'generated_at' => gmdate( 'c' ),
+                'size_kb'      => round( strlen( $css ) / 1024 ),
+            ], $meta );
+
+            $all_meta = get_option( 'cache_party_critical_meta', [] );
+            $all_meta[ $template ] = $meta;
+            update_option( 'cache_party_critical_meta', $all_meta, false );
+
+            // Sync to AO if active.
+            if ( self::ao_defer_active() ) {
+                AO_Bridge::sync_critical_css_to_ao();
+            }
         }
 
         return $saved;

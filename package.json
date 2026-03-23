@@ -8,11 +8,12 @@
     "perf:local": "lhci autorun --config=./lighthouserc.cjs"
   },
   "dependencies": {
+    "clean-css": "^5.3.3",
     "express": "^4.21.0",
-    "penthouse": "^2.3.3",
     "fast-xml-parser": "^5.5.7",
     "node-cron": "^3.0.3",
     "p-limit": "^4.0.0",
+    "penthouse": "^2.3.3",
     "puppeteer": "^24.0.0"
   },
   "engines": {

@@ -74,9 +74,9 @@ app.post("/api/warm", requireAuth, (req, res) => {
   res.status(202).json({ message: `Warming started for ${siteName}` });
 });
 
-// Critical CSS extraction
+// Critical CSS extraction (multi-viewport)
 app.post("/api/critical-css", requireAuth, async (req, res) => {
-  const { url, css_url, viewport_width } = req.body || {};
+  const { url, css_url, dimensions, template, viewport_width } = req.body || {};
 
   if (!url) {
     return res.status(400).json({ error: 'Provide "url" to extract critical CSS from' });
@@ -84,8 +84,18 @@ app.post("/api/critical-css", requireAuth, async (req, res) => {
 
   try {
     const { extractCriticalCSS } = await import("./critical-css.js");
-    const css = await extractCriticalCSS(url, css_url || null, viewport_width || 1300);
-    res.json({ css, url, viewport_width: viewport_width || 1300 });
+
+    const options = { template };
+    if (css_url) options.cssUrl = css_url;
+    if (dimensions) options.dimensions = dimensions;
+
+    // Backwards compat: single viewport_width param → one-viewport dimensions.
+    if (!dimensions && viewport_width) {
+      options.dimensions = [{ width: viewport_width, height: 900 }];
+    }
+
+    const result = await extractCriticalCSS(url, options);
+    res.json(result);
   } catch (err) {
     info("CRITICAL-CSS", `Error: ${err.message}`);
     res.status(500).json({ error: err.message });
