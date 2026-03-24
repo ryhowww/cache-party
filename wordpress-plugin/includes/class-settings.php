@@ -629,7 +629,8 @@ class Settings {
                 <?php foreach ( $all_templates as $tpl ) :
                     $slug      = $tpl['slug'];
                     $existing  = $gen_lookup[ $slug ] ?? null;
-                    $url       = $tpl['sample_url'] ?? '';
+                    // Only pre-fill the homepage URL — other guesses are often wrong.
+                    $url = ( $slug === 'front-page' ) ? ( $tpl['sample_url'] ?? home_url( '/' ) ) : '';
                 ?>
                 <tr>
                     <td><code><?php echo esc_html( $slug ); ?></code></td>
