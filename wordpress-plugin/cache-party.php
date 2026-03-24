@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Cache Party
  * Plugin URI:        https://completeseo.com
- * Description:       Unified WordPress performance plugin — WebP conversion, smart lazy loading, CSS/JS optimization, critical CSS, and cache warmer integration. Built on top of Autoptimize.
+ * Description:       Unified WordPress performance plugin — WebP conversion, smart lazy loading, CSS/JS optimization, critical CSS, and cache warmer integration.
  * Version:           1.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
@@ -22,6 +22,31 @@ define( 'CACHE_PARTY_VERSION', '1.0.0' );
 define( 'CACHE_PARTY_PATH', plugin_dir_path( __FILE__ ) );
 define( 'CACHE_PARTY_URL', plugin_dir_url( __FILE__ ) );
 define( 'CACHE_PARTY_FILE', __FILE__ );
+
+// Plugin Update Checker — checks GitHub for new releases.
+require_once __DIR__ . '/vendor/plugin-update-checker/plugin-update-checker.php';
+
+$cachePartyUpdateChecker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+    'https://github.com/ryhowww/cache-party/',
+    __FILE__,
+    'cache-party'
+);
+
+// Use GitHub releases (tagged versions), download the release asset ZIP.
+$cachePartyUpdateChecker->getVcsApi()->enableReleaseAssets();
+
+// Private repo: read token from wp-config.php constant if defined.
+if ( defined( 'CACHE_PARTY_GITHUB_TOKEN' ) ) {
+    $cachePartyUpdateChecker->setAuthentication( CACHE_PARTY_GITHUB_TOKEN );
+}
+
+// Force auto-updates on managed sites.
+add_filter( 'auto_update_plugin', function( $update, $item ) {
+    if ( isset( $item->slug ) && $item->slug === 'cache-party' ) {
+        return true;
+    }
+    return $update;
+}, 10, 2 );
 
 require_once __DIR__ . '/includes/class-autoloader.php';
 
