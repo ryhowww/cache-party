@@ -84,6 +84,10 @@ class Settings {
 
     public static function asset_defaults() {
         return [
+            'css_aggregate_enabled'   => true,
+            'css_aggregate_inline'    => true,
+            'css_exclude'             => '',
+            'css_minify_excluded'     => true,
             'css_defer_enabled'       => true,
             'css_defer_keywords'      => '',
             'css_defer_except'        => '',
@@ -105,6 +109,10 @@ class Settings {
         $defaults = self::asset_defaults();
         $clean    = [];
 
+        $clean['css_aggregate_enabled']   = ! empty( $input['css_aggregate_enabled'] );
+        $clean['css_aggregate_inline']    = ! empty( $input['css_aggregate_inline'] );
+        $clean['css_exclude']             = isset( $input['css_exclude'] ) ? sanitize_textarea_field( $input['css_exclude'] ) : '';
+        $clean['css_minify_excluded']     = ! empty( $input['css_minify_excluded'] );
         $clean['css_defer_enabled']       = ! empty( $input['css_defer_enabled'] );
         $clean['css_defer_keywords']      = isset( $input['css_defer_keywords'] ) ? sanitize_textarea_field( $input['css_defer_keywords'] ) : '';
         $clean['css_defer_except']        = isset( $input['css_defer_except'] ) ? sanitize_textarea_field( $input['css_defer_except'] ) : '';
@@ -376,14 +384,50 @@ class Settings {
 
     private function render_tab_assets() {
         $settings = wp_parse_args( get_option( 'cache_party_assets', [] ), self::asset_defaults() );
-        $ao_active = defined( 'AUTOPTIMIZE_PLUGIN_VERSION' );
+        $cache_stats = \CacheParty\Assets\Cache_Manager::stats();
         ?>
 
-        <?php if ( ! $ao_active ) : ?>
-            <div class="notice notice-info inline" style="margin: 20px 0 10px;">
-                <p>Autoptimize is not active. CSS/JS deferral and delay still work, but assets will not be minified.</p>
-            </div>
-        <?php endif; ?>
+        <h2>CSS Aggregation</h2>
+        <p class="description">Combines multiple stylesheets into a single minified file. Cache: <?php echo esc_html( $cache_stats['count'] ); ?> files (<?php echo esc_html( $cache_stats['size_human'] ); ?>).
+            <button type="button" class="button button-small" id="cp-purge-css-cache" style="margin-left:8px;">Purge Cache</button>
+        </p>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="cp_css_aggregate_enabled">Enable CSS aggregation</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[css_aggregate_enabled]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[css_aggregate_enabled]" id="cp_css_aggregate_enabled" value="1"
+                        <?php checked( $settings['css_aggregate_enabled'] ); ?> />
+                    <p class="description">Combine and minify all CSS into a single cached file per media type.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_css_aggregate_inline">Also aggregate inline CSS</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[css_aggregate_inline]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[css_aggregate_inline]" id="cp_css_aggregate_inline" value="1"
+                        <?php checked( $settings['css_aggregate_inline'] ); ?> />
+                    <p class="description">Include inline &lt;style&gt; blocks in the aggregated file.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_css_exclude">CSS exclusions</label></th>
+                <td>
+                    <textarea name="cache_party_assets[css_exclude]" id="cp_css_exclude"
+                              rows="3" class="large-text"><?php echo esc_textarea( $settings['css_exclude'] ); ?></textarea>
+                    <p class="description">Comma-separated. Stylesheets matching these keywords will not be aggregated (but may still be individually minified).</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_css_minify_excluded">Minify excluded CSS</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[css_minify_excluded]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[css_minify_excluded]" id="cp_css_minify_excluded" value="1"
+                        <?php checked( $settings['css_minify_excluded'] ); ?> />
+                    <p class="description">Individually minify CSS files that are excluded from aggregation.</p>
+                </td>
+            </tr>
+        </table>
 
         <h2>CSS Deferral</h2>
         <p class="description">Extracts stylesheets and defers loading until first user interaction.</p>

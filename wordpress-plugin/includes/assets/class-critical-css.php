@@ -8,12 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Template-based critical CSS.
  *
  * Static CSS files stored in wp-content/uploads/cache-party/critical-css/{template}.css.
- *
- * When AO's "Inline & Defer CSS" is active, the AO_Bridge feeds our critical
- * CSS into AO's defer_inline filter — AO handles the inlining. We skip our
- * own wp_head injection to avoid double-inlining.
- *
- * When AO is not active (or AO defer is off), we inline directly via wp_head.
+ * Inlines per-template critical CSS directly via wp_head at priority 2.
  *
  * Generate via WP-CLI:
  *   wp cache-party generate-critical --template=front-page --url=https://example.com/
@@ -25,26 +20,11 @@ class Critical_CSS {
     const CACHE_DIR = 'cache-party/critical-css';
 
     public function __construct() {
-        // When AO is active, merged critical CSS lives in AO's defer_inline
-        // option. AO inlines it as <style id="aoatfcss">. Skip wp_head.
-        // When AO is not active, we inline per-template via wp_head.
-        if ( ! self::ao_defer_active() ) {
-            add_action( 'wp_head', [ $this, 'inline_critical_css' ], 2 );
-        }
-    }
-
-    /**
-     * Check if AO's "Inline & Defer CSS" is active.
-     * When it is, AO_Bridge feeds our critical CSS into AO's pipeline.
-     */
-    public static function ao_defer_active() {
-        return defined( 'AUTOPTIMIZE_PLUGIN_VERSION' )
-            && get_option( 'autoptimize_css_defer', '' ) === 'on';
+        add_action( 'wp_head', [ $this, 'inline_critical_css' ], 2 );
     }
 
     /**
      * Detect current template and inline matching critical CSS.
-     * Only runs when AO defer is NOT active.
      */
     public function inline_critical_css() {
         // Guard against double-firing.

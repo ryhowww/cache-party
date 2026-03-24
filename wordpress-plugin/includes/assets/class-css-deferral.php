@@ -7,25 +7,19 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 /**
  * CSS processing for the output buffer.
  *
- * When AO is active: only handles delete-by-keyword. AO owns aggregation,
- * minification, and defer (media="print" onload). Critical CSS is fed to
- * AO's defer_inline by the AO_Bridge class.
- *
- * When AO is NOT active: handles delete-by-keyword AND defer via
- * media="print" onload on <link> stylesheets. Inline <style> blocks that
- * match defer keywords go into a noscript for the interaction loader.
+ * Handles delete-by-keyword AND defer via media="print" onload on
+ * <link> stylesheets. Inline <style> blocks that match defer keywords
+ * go into a noscript for the interaction loader.
  */
 class CSS_Deferral {
 
     private $settings;
-    private $ao_active;
     private $deferred_links   = '';
     private $deferred_inlines = '';
     private $head_styles      = '';
 
     public function __construct( $settings ) {
-        $this->settings  = $settings;
-        $this->ao_active = defined( 'AUTOPTIMIZE_PLUGIN_VERSION' );
+        $this->settings = $settings;
     }
 
     public function process_buffer( $content ) {
@@ -33,51 +27,11 @@ class CSS_Deferral {
             return $content;
         }
 
-        // When AO is active, it handles CSS aggregation and defer.
-        // We only need to process delete-by-keyword here.
-        if ( $this->ao_active ) {
-            return $this->process_deletes_only( $content );
-        }
-
-        // Standalone mode (no AO): full CSS deferral pipeline.
         return $this->process_standalone( $content );
     }
 
     /**
-     * AO-active mode: only delete stylesheets by keyword.
-     * AO handles everything else (aggregation, defer, critical CSS inline).
-     */
-    private function process_deletes_only( $content ) {
-        $delete_kw = $this->keywords_from_setting( 'css_delete_keywords' );
-        $delete_kw = apply_filters( 'cp_delete_style_kw', $delete_kw );
-
-        if ( empty( $delete_kw ) ) {
-            return $content;
-        }
-
-        $content = preg_replace_callback(
-            '#(<style[^>]*>.*</style>)|(<link[^>]*stylesheet[^>]*>)#Usmi',
-            function( $matches ) use ( $delete_kw ) {
-                $tag    = $matches[0];
-                $inline = $matches[1] ?? '';
-                $link   = $matches[2] ?? '';
-
-                foreach ( $delete_kw as $kw ) {
-                    if ( $kw !== '' && ( stripos( $inline, $kw ) !== false || stripos( $link, $kw ) !== false ) ) {
-                        return '';
-                    }
-                }
-
-                return $tag;
-            },
-            $content
-        );
-
-        return $content;
-    }
-
-    /**
-     * Standalone mode (no AO): delete + defer CSS.
+     * Full CSS deferral pipeline: delete + defer.
      * <link> stylesheets get media="print" onload (non-render-blocking).
      * Inline <style> blocks go into noscript for interaction loader.
      */

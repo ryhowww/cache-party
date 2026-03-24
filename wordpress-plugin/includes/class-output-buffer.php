@@ -7,14 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 /**
  * Single output buffer orchestrator.
  *
- * All HTML-rewriting processors (CSS deferral, JS delay, iframe lazy,
- * picture wrapper, lazy loader) register here instead of starting their
- * own ob_start(). One buffer at template_redirect priority 3 — mirrors
- * the Autoptimize Custom (AOC) single-buffer pattern.
- *
- * When Autoptimize is active it registers its buffer at priority 2,
- * making ours the inner buffer. The AO_Bridge class handles coordination
- * via AO's before_minify / after_minify hooks — that is unchanged.
+ * All HTML-rewriting processors (CSS aggregation, CSS deferral, JS delay,
+ * iframe lazy, picture wrapper, lazy loader) register here instead of
+ * starting their own ob_start(). One buffer at template_redirect priority 3.
  */
 class Output_Buffer {
 
@@ -63,10 +58,6 @@ class Output_Buffer {
 
     public function process( $content ) {
         if ( empty( $content ) || strpos( $content, '</body>' ) === false ) {
-            return $content;
-        }
-
-        if ( function_exists( 'autoptimize' ) && ! autoptimize()->is_valid_buffer( $content ) ) {
             return $content;
         }
 

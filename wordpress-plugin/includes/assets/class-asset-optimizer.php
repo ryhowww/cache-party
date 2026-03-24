@@ -17,6 +17,13 @@ class Asset_Optimizer {
         // Output buffer — register processors with the single Output_Buffer.
         $buffer = \CacheParty\Output_Buffer::instance();
 
+        // CSS aggregation (priority 1 — runs before deferral).
+        if ( ! empty( $this->settings['css_aggregate_enabled'] ) ) {
+            Cache_Manager::cache_available();
+            $aggregator = new CSS_Aggregator( $this->settings );
+            $buffer->add_processor( 1, [ $aggregator, 'process_buffer' ] );
+        }
+
         if ( $this->settings['css_defer_enabled'] ) {
             $css = new CSS_Deferral( $this->settings );
             $buffer->add_processor( 3, [ $css, 'process_buffer' ] );
@@ -28,8 +35,7 @@ class Asset_Optimizer {
         }
 
         if ( $this->settings['js_delay_enabled'] ) {
-            // Interaction loader only needed for JS delay (CSS defer is
-            // handled by AO's media="print" onload or our standalone defer).
+            // Interaction loader for JS delay.
             add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_loader' ], 1 );
 
             // Body class for scroll state tracking.
@@ -47,10 +53,9 @@ class Asset_Optimizer {
         // Resource hints (always active when module is on).
         new Resource_Hints( $this->settings );
 
-        // Autoptimize bridge (only if AO is active).
-        if ( defined( 'AUTOPTIMIZE_PLUGIN_VERSION' ) ) {
-            new AO_Bridge( $this->settings );
-        }
+        // Cache cleanup cron.
+        Cache_Manager::schedule_cleanup();
+        add_action( 'cp_cache_cleanup', [ Cache_Manager::class, 'cleanup' ] );
 
         // Auto-detect plugin scripts to delay.
         if ( $this->settings['auto_detect_plugins'] ) {
@@ -60,6 +65,7 @@ class Asset_Optimizer {
         // Admin AJAX: generate critical CSS.
         if ( is_admin() ) {
             add_action( 'wp_ajax_cache_party_generate_critical', [ $this, 'ajax_generate_critical' ] );
+            add_action( 'wp_ajax_cache_party_purge_css_cache', [ $this, 'ajax_purge_css_cache' ] );
         }
 
         // WP-CLI commands for assets.
@@ -70,6 +76,18 @@ class Asset_Optimizer {
             \WP_CLI::add_command( 'cache-party list-critical', [ $cli, 'list_critical' ] );
             \WP_CLI::add_command( 'cache-party delete-critical', [ $cli, 'delete_critical' ] );
         }
+    }
+
+    /**
+     * AJAX: Purge aggregated CSS cache.
+     */
+    public function ajax_purge_css_cache() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+        Cache_Manager::clearall( 'css' );
+        wp_send_json_success( [ 'message' => 'CSS cache purged.' ] );
     }
 
     public function enqueue_loader() {

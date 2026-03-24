@@ -53,25 +53,15 @@ class Resource_Hints {
 
     /**
      * Send font/image preload headers or tags.
-     * Called from AO_Bridge after minify, or standalone if AO is not active.
+     * Detects Cache Party aggregated CSS files for preloading.
      */
     public static function send_preload_hints( $content, $preload_by_http = true ) {
-        $CDN  = get_option( 'autoptimize_cdn_url' ) ?: '//' . ( $_SERVER['HTTP_HOST'] ?? 'localhost' ) . '/';
         $head = '';
 
-        // CSS preload (Autoptimize aggregated CSS).
-        if ( preg_match( '/autoptimize\_([a-f0-9]{32})\.css/i', $content, $md5 ) ) {
-            $url = $CDN . 'wp-content/cache/autoptimize/css/autoptimize_' . $md5[1] . '.css';
-            if ( $preload_by_http ) {
-                header( 'Link: <' . $url . '>; rel=preload; as=style', false );
-            } else {
-                $head .= '<link rel="preload" href="' . esc_url( $url ) . '" as="style">' . "\r\n";
-            }
-        }
-
-        if ( preg_match_all( '/autoptimize\_single\_([a-f0-9]{32})\.css\?ver=([0-9]+)/i', $content, $md5s ) ) {
-            foreach ( $md5s[1] as $i => $md5 ) {
-                $url = $CDN . 'wp-content/cache/autoptimize/css/autoptimize_single_' . $md5 . '.css?ver=' . $md5s[2][ $i ];
+        // CSS preload (Cache Party aggregated CSS).
+        if ( preg_match_all( '/cache\/cache-party\/css\/cp_([a-f0-9]{32})\.css/i', $content, $cp_matches ) ) {
+            foreach ( $cp_matches[0] as $match ) {
+                $url = content_url( '/' . $match );
                 if ( $preload_by_http ) {
                     header( 'Link: <' . $url . '>; rel=preload; as=style', false );
                 } else {
