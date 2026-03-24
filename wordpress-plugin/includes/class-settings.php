@@ -447,7 +447,7 @@ class Settings {
                 <td>
                     <textarea name="cache_party_assets[css_defer_keywords]" id="cp_css_defer_keywords"
                               rows="3" class="large-text"><?php echo esc_textarea( $settings['css_defer_keywords'] ); ?></textarea>
-                    <p class="description">One per line. Stylesheets matching these keywords will be deferred. Leave empty to defer all (except those in "Keep in head").</p>
+                    <p class="description">One per line. Only defer stylesheets matching these keywords (allowlist mode). Leave empty to defer all CSS.</p>
                 </td>
             </tr>
             <tr>
@@ -455,7 +455,7 @@ class Settings {
                 <td>
                     <textarea name="cache_party_assets[css_defer_except]" id="cp_css_defer_except"
                               rows="3" class="large-text"><?php echo esc_textarea( $settings['css_defer_except'] ); ?></textarea>
-                    <p class="description">One per line. Stylesheets matching these keywords will NOT be deferred (loaded normally in head).</p>
+                    <p class="description">One per line. Stylesheets matching these keywords stay in head (not deferred). Only used when "Defer by keyword" is empty.</p>
                 </td>
             </tr>
             <tr>

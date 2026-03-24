@@ -89,28 +89,31 @@ class CSS_Deferral {
             }
         }
 
-        foreach ( $defer_kw as $kw ) {
-            if ( $kw !== '' && ( stripos( $inline, $kw ) !== false || stripos( $link, $kw ) !== false ) ) {
-                $this->defer_tag( $tag, $link );
-                return '';
-            }
-        }
-
-        if ( ! empty( $except_kw ) ) {
-            $is_excepted = false;
-            foreach ( $except_kw as $kw ) {
+        // Defer keywords populated → allowlist mode: only defer matching.
+        if ( ! empty( $defer_kw ) ) {
+            foreach ( $defer_kw as $kw ) {
                 if ( $kw !== '' && ( stripos( $inline, $kw ) !== false || stripos( $link, $kw ) !== false ) ) {
-                    $is_excepted = true;
-                    break;
+                    $this->defer_tag( $tag, $link );
+                    return '';
                 }
             }
-            if ( ! $is_excepted ) {
-                $this->defer_tag( $tag, $link );
-                return '';
+            // Didn't match any defer keyword — keep in head.
+            $this->head_styles .= $tag;
+            return '';
+        }
+
+        // Except keywords populated → blocklist mode: defer all except matching.
+        if ( ! empty( $except_kw ) ) {
+            foreach ( $except_kw as $kw ) {
+                if ( $kw !== '' && ( stripos( $inline, $kw ) !== false || stripos( $link, $kw ) !== false ) ) {
+                    $this->head_styles .= $tag;
+                    return '';
+                }
             }
         }
 
-        $this->head_styles .= $tag;
+        // Both empty, or except didn't match → defer everything.
+        $this->defer_tag( $tag, $link );
         return '';
     }
 
