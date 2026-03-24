@@ -1,32 +1,31 @@
- name: Build Release ZIP
+name: Build Release ZIP
 
-  on:
-    push:
-      tags:
-        - 'v*'
+on:
+  push:
+    tags:
+      - 'v*'
 
-  permissions:
-    contents: write
+permissions:
+  contents: write
 
-  jobs:
-    build:
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v4
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Build plugin ZIP
-          run: |
-            cd wordpress-plugin
-            zip -r ../cache-party.zip . \
-              -x '*.DS_Store' \
-              -x '__MACOSX/*' \
-              -x '*.md' \
-              -x 'tests/*' \
-              -x 'phpunit.*' \
-              -x '.phpcs.*'
+      - name: Build plugin ZIP
+        run: |
+          cd wordpress-plugin
+          zip -r ../cache-party.zip . \
+            -x '*.DS_Store' \
+            -x '__MACOSX/*' \
+            -x '*.md' \
+            -x 'tests/*' \
+            -x 'phpunit.*' \
+            -x '.phpcs.*'
 
-        - name: Attach ZIP to release
-          uses: softprops/action-gh-release@v2
-          with:
-            files: cache-party.zip
-
+      - name: Attach ZIP to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cache-party.zip
