@@ -1,16 +1,27 @@
 import express from "express";
 import cron from "node-cron";
-import { getEnabledSites, getSite } from "./config.js";
-import { warmSite, isRunning, getAllStatus } from "./warmer.js";
+import {
+  getDb,
+  normalizeUrl,
+  registerSite,
+  removeSite,
+  listSites,
+  getEnabledSites,
+  getSiteById,
+  updateSite,
+  findSiteByDomain,
+} from "./db.js";
+import { warmSite, isRunning } from "./warmer.js";
 import { info } from "./logger.js";
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: "2mb" }));
 
 const PORT = process.env.PORT || 3000;
 const AUTH_TOKEN = process.env.AUTH_TOKEN || null;
 
-// Auth middleware for POST routes
+// ─── Auth middleware ─────────────────────────────────────────
+
 function requireAuth(req, res, next) {
   if (!AUTH_TOKEN) return next();
   const header = req.headers.authorization;
@@ -20,19 +31,123 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// Health check
+// ─── Health ──────────────────────────────────────────────────
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// Status
-app.get("/api/status", (_req, res) => {
-  res.json({ sites: getAllStatus() });
+// ─── Site Registration API ───────────────────────────────────
+
+// List all sites for the authenticated key.
+app.get("/api/sites", requireAuth, (req, res) => {
+  const apiKey = AUTH_TOKEN || "default";
+  const sites = listSites(apiKey);
+  res.json({
+    sites: sites.map(formatSite),
+    total: sites.length,
+  });
 });
 
-// Trigger warm
+// Register a new site.
+app.post("/api/sites/register", requireAuth, (req, res) => {
+  const { url, sitemap_path } = req.body || {};
+
+  if (!url) {
+    return res.status(400).json({ error: 'Provide "url"' });
+  }
+
+  const apiKey = AUTH_TOKEN || "default";
+  const { site, created } = registerSite(url, apiKey, sitemap_path);
+
+  if (created) {
+    info("SITES", `Registered: ${site.url}`);
+    return res.status(201).json({
+      id: site.id,
+      url: site.url,
+      sitemap_path: site.sitemap_path,
+      status: "registered",
+      message: "Site registered. First warm will run on next cycle.",
+    });
+  }
+
+  return res.status(200).json({
+    id: site.id,
+    url: site.url,
+    status: "already_registered",
+    message: "Site is already registered.",
+  });
+});
+
+// Remove a site.
+app.delete("/api/sites/remove", requireAuth, (req, res) => {
+  const { url } = req.body || {};
+
+  if (!url) {
+    return res.status(400).json({ error: 'Provide "url"' });
+  }
+
+  const apiKey = AUTH_TOKEN || "default";
+  const removed = removeSite(url, apiKey);
+
+  if (removed) {
+    info("SITES", `Removed: ${normalizeUrl(url)}`);
+    return res.json({ url: normalizeUrl(url), status: "removed" });
+  }
+
+  return res.status(404).json({ error: "Site not found" });
+});
+
+// Update a site.
+app.patch("/api/sites/:id", requireAuth, (req, res) => {
+  const apiKey = AUTH_TOKEN || "default";
+  const site = updateSite(parseInt(req.params.id), apiKey, req.body);
+
+  if (!site) {
+    return res.status(404).json({ error: "Site not found or nothing to update" });
+  }
+
+  res.json(formatSite(site));
+});
+
+// Single site status.
+app.get("/api/sites/:id/status", requireAuth, (req, res) => {
+  const apiKey = AUTH_TOKEN || "default";
+  const site = getSiteById(parseInt(req.params.id), apiKey);
+
+  if (!site) {
+    return res.status(404).json({ error: "Site not found" });
+  }
+
+  res.json(formatSite(site));
+});
+
+// ─── Status (backwards compat) ──────────────────────────────
+
+app.get("/api/status", (_req, res) => {
+  const sites = getEnabledSites();
+  const status = {};
+  for (const site of sites) {
+    // Use domain as key for backwards compat.
+    const domain = new URL(site.url).hostname;
+    status[domain] = {
+      lastRun: site.last_warm_at,
+      duration: site.last_warm_duration,
+      totalUrls: site.last_warm_urls,
+      hits: site.last_warm_hits,
+      misses: site.last_warm_misses,
+      expired: site.last_warm_expired,
+      errors: site.last_warm_errors,
+      avgTtfb: site.last_warm_avg_ttfb ? `${site.last_warm_avg_ttfb}ms` : null,
+    };
+  }
+  res.json({ sites: status });
+});
+
+// ─── Trigger warm ────────────────────────────────────────────
+
 app.post("/api/warm", requireAuth, (req, res) => {
-  const { site: siteName, all } = req.body || {};
+  const { site: siteName, url: singleUrl, all } = req.body || {};
 
   if (all) {
     const sites = getEnabledSites();
@@ -40,41 +155,40 @@ app.post("/api/warm", requireAuth, (req, res) => {
       return res.status(400).json({ error: "No enabled sites" });
     }
 
-    const alreadyRunning = sites.filter((s) => isRunning(s.name)).map((s) => s.name);
-    const toRun = sites.filter((s) => !isRunning(s.name));
+    const alreadyRunning = sites.filter((s) => isRunning(s.id)).map((s) => s.url);
+    const toRun = sites.filter((s) => !isRunning(s.id));
 
-    // Fire and forget
     for (const s of toRun) {
       warmSite(s);
     }
 
     return res.status(202).json({
       message: `Warming ${toRun.length} site(s)`,
-      started: toRun.map((s) => s.name),
+      started: toRun.map((s) => s.url),
       skipped: alreadyRunning,
     });
   }
 
+  // Find site by name (backwards compat) or by domain.
   if (!siteName) {
     return res.status(400).json({ error: 'Provide "site" name or "all": true' });
   }
 
-  const site = getSite(siteName);
+  const site = findSiteByDomain(siteName);
   if (!site) {
     return res.status(404).json({ error: `Site "${siteName}" not found` });
   }
 
-  if (isRunning(siteName)) {
-    return res.status(409).json({ error: `Warm already running for ${siteName}` });
+  if (isRunning(site.id)) {
+    return res.status(409).json({ error: `Warm already running for ${site.url}` });
   }
 
-  // Fire and forget
   warmSite(site);
-
-  res.status(202).json({ message: `Warming started for ${siteName}` });
+  res.status(202).json({ message: `Warming started for ${site.url}` });
 });
 
-// Critical CSS extraction (multi-viewport)
+// ─── Critical CSS extraction ─────────────────────────────────
+
 app.post("/api/critical-css", requireAuth, async (req, res) => {
   const { url, css_url, dimensions, template, viewport_width } = req.body || {};
 
@@ -89,7 +203,6 @@ app.post("/api/critical-css", requireAuth, async (req, res) => {
     if (css_url) options.cssUrl = css_url;
     if (dimensions) options.dimensions = dimensions;
 
-    // Backwards compat: single viewport_width param → one-viewport dimensions.
     if (!dimensions && viewport_width) {
       options.dimensions = [{ width: viewport_width, height: 900 }];
     }
@@ -102,7 +215,8 @@ app.post("/api/critical-css", requireAuth, async (req, res) => {
   }
 });
 
-// Merge/deduplicate multiple CSS strings
+// ─── Merge/deduplicate CSS ───────────────────────────────────
+
 app.post("/api/merge-css", requireAuth, async (req, res) => {
   const { css_strings } = req.body || {};
 
@@ -138,11 +252,10 @@ app.post("/api/merge-css", requireAuth, async (req, res) => {
   }
 });
 
-// Cron: every 20 hours
-// node-cron doesn't support "every 20 hours" directly, so we use a workaround
-// Schedule check every hour, track last run time
+// ─── Cron: warm all enabled sites every 20 hours ─────────────
+
 let lastCronRun = 0;
-const CRON_INTERVAL_MS = 20 * 60 * 60 * 1000; // 20 hours
+const CRON_INTERVAL_MS = 20 * 60 * 60 * 1000;
 
 cron.schedule("0 * * * *", () => {
   const now = Date.now();
@@ -157,13 +270,17 @@ cron.schedule("0 * * * *", () => {
   });
 });
 
-// Run initial warm on startup
+// ─── Startup ─────────────────────────────────────────────────
+
+// Initialize DB (creates schema, migrates sites.json if needed).
+getDb();
+
 info("STARTUP", "Cache Warmer starting");
-const sites = getEnabledSites();
-if (sites.length > 0) {
-  info("STARTUP", `Running initial warm for ${sites.length} site(s)`);
+const startupSites = getEnabledSites();
+if (startupSites.length > 0) {
+  info("STARTUP", `Running initial warm for ${startupSites.length} site(s)`);
   lastCronRun = Date.now();
-  for (const s of sites) {
+  for (const s of startupSites) {
     warmSite(s);
   }
 }
@@ -171,3 +288,23 @@ if (sites.length > 0) {
 app.listen(PORT, () => {
   info("STARTUP", `Listening on port ${PORT}`);
 });
+
+// ─── Helpers ─────────────────────────────────────────────────
+
+function formatSite(row) {
+  return {
+    id: row.id,
+    url: row.url,
+    sitemap_path: row.sitemap_path,
+    enabled: row.enabled === 1,
+    last_warm_at: row.last_warm_at || null,
+    last_warm_status: row.last_warm_status || null,
+    last_warm_duration: row.last_warm_duration || null,
+    last_warm_urls: row.last_warm_urls || null,
+    last_warm_hits: row.last_warm_hits || null,
+    last_warm_misses: row.last_warm_misses || null,
+    last_warm_expired: row.last_warm_expired || null,
+    last_warm_errors: row.last_warm_errors || null,
+    last_warm_avg_ttfb: row.last_warm_avg_ttfb || null,
+  };
+}

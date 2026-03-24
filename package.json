@@ -8,6 +8,7 @@
     "perf:local": "lhci autorun --config=./lighthouserc.cjs"
   },
   "dependencies": {
+    "better-sqlite3": "^12.8.0",
     "clean-css": "^5.3.3",
     "express": "^4.21.0",
     "fast-xml-parser": "^5.5.7",

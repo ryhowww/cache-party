@@ -53,6 +53,12 @@ require_once __DIR__ . '/includes/class-autoloader.php';
 \CacheParty\Plugin::init();
 register_uninstall_hook( __FILE__, [ '\CacheParty\Plugin', 'uninstall' ] );
 
+// Deactivation: deregister site from warmer (non-blocking).
+register_deactivation_hook( __FILE__, function() {
+    $warmer = new \CacheParty\Warmer\Warmer_Client();
+    $warmer->remove_site();
+} );
+
 /**
  * Theme helper: output an <img> or <picture> tag with WebP support.
  *
