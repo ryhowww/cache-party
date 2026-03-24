@@ -688,7 +688,11 @@ class Settings {
                 }).done(function(res) {
                     if (res.success) {
                         $status.html('<span style="color:#46b450;">' + res.data.message + '</span>');
-                        setTimeout(function() { location.reload(); }, 2000);
+                        // Update the row inline instead of reloading (preserves user-entered URLs).
+                        var $row = $btn.closest('tr');
+                        $row.find('td:eq(2)').html('<span style="color:#46b450;">Generated</span>');
+                        $row.find('td:eq(3)').text(res.data.size ? (Math.round(res.data.size / 1024) + ' KB') : '—');
+                        $btn.text('Regenerate');
                     } else {
                         $status.html('<span style="color:#dc3232;">' + (res.data ? res.data.message : 'Failed') + '</span>');
                     }

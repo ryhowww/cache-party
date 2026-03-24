@@ -260,12 +260,15 @@ class WebP_Converter {
         $file = get_attached_file( $attachment_id );
         if ( ! $file || ! file_exists( $file ) ) {
             $result['error'] = 'File not found.';
+            // Mark as attempted so it's excluded from future batch queries.
+            update_post_meta( $attachment_id, self::META_KEY, [ 'original' => '', 'sizes' => [], 'skipped' => true ] );
             return $result;
         }
 
         $mime = get_post_mime_type( $attachment_id );
         if ( ! in_array( $mime, [ 'image/jpeg', 'image/png' ], true ) ) {
             $result['error'] = 'Not a JPEG or PNG image.';
+            update_post_meta( $attachment_id, self::META_KEY, [ 'original' => '', 'sizes' => [], 'skipped' => true ] );
             return $result;
         }
 
@@ -276,6 +279,7 @@ class WebP_Converter {
         $metadata = wp_get_attachment_metadata( $attachment_id );
         if ( ! $metadata ) {
             $result['error'] = 'No attachment metadata.';
+            update_post_meta( $attachment_id, self::META_KEY, [ 'original' => '', 'sizes' => [], 'skipped' => true ] );
             return $result;
         }
 
