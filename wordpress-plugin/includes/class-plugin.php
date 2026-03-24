@@ -25,6 +25,12 @@ class Plugin {
         new Meta_Box();
         new Cloudflare();
 
+        // Warmer AJAX handlers: always register so settings tab buttons
+        // work even when the warmer module isn't enabled in General tab.
+        if ( is_admin() && ! in_array( 'warmer', get_option( 'cache_party_modules', [] ), true ) ) {
+            new Warmer\Warmer_Client();
+        }
+
         // Critical CSS: always active if files exist.
         new Assets\Critical_CSS();
 
