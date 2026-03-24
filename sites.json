@@ -15,6 +15,14 @@
       "concurrency": 5,
       "delayMs": 100,
       "enabled": true
+    },
+    {
+      "name": "trustworthyCleaning",
+      "domain": "www.trustworthycleaningserv.com",
+      "sitemapPath": "/sitemap_index.xml",
+      "concurrency": 5,
+      "delayMs": 100,
+      "enabled": true
     }
   ],
   "defaults": {
