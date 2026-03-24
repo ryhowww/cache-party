@@ -102,6 +102,7 @@ class Settings {
             'idle_timeout'            => 5,
             'preload_css_http'        => true,
             'auto_detect_plugins'     => true,
+            'remove_emojis'           => true,
         ];
     }
 
@@ -127,6 +128,7 @@ class Settings {
         $clean['idle_timeout']            = isset( $input['idle_timeout'] ) ? max( 0, min( 30, (int) $input['idle_timeout'] ) ) : $defaults['idle_timeout'];
         $clean['preload_css_http']        = ! empty( $input['preload_css_http'] );
         $clean['auto_detect_plugins']     = ! empty( $input['auto_detect_plugins'] );
+        $clean['remove_emojis']           = ! empty( $input['remove_emojis'] );
 
         return $clean;
     }
@@ -563,6 +565,15 @@ class Settings {
                     <input type="checkbox" name="cache_party_assets[auto_detect_plugins]" id="cp_auto_detect_plugins" value="1"
                         <?php checked( $settings['auto_detect_plugins'] ); ?> />
                     <p class="description">Automatically add delay rules for known plugins (PixelYourSite, GTM, etc.).</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_remove_emojis">Remove WordPress emojis</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[remove_emojis]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[remove_emojis]" id="cp_remove_emojis" value="1"
+                        <?php checked( $settings['remove_emojis'] ); ?> />
+                    <p class="description">Remove WordPress core emoji inline CSS, inline JavaScript, and DNS prefetch.</p>
                 </td>
             </tr>
         </table>

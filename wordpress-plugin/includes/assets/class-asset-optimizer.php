@@ -47,6 +47,11 @@ class Asset_Optimizer {
             $buffer->add_processor( 5, [ $iframe, 'process_buffer' ] );
         }
 
+        // Remove WordPress emoji inline CSS, JS, and DNS prefetch.
+        if ( ! empty( $this->settings['remove_emojis'] ) ) {
+            $this->disable_emojis();
+        }
+
         // Critical CSS (always active — inlines if files exist).
         new Critical_CSS();
 
@@ -114,6 +119,31 @@ class Asset_Optimizer {
     public function add_body_class( $classes ) {
         $classes[] = 'cp-not-scrolled';
         return $classes;
+    }
+
+    /**
+     * Remove WordPress core emoji inline CSS, inline JS, and DNS prefetch.
+     * Transplanted from autoptimizeExtra::disable_emojis().
+     */
+    private function disable_emojis() {
+        remove_action( 'wp_head', 'print_emoji_detection_script', 7 );
+        remove_action( 'admin_print_scripts', 'print_emoji_detection_script' );
+        remove_action( 'wp_print_styles', 'print_emoji_styles' );
+        remove_action( 'admin_print_styles', 'print_emoji_styles' );
+        remove_filter( 'the_content_feed', 'wp_staticize_emoji' );
+        remove_filter( 'comment_text_rss', 'wp_staticize_emoji' );
+        remove_filter( 'wp_mail', 'wp_staticize_emoji_for_email' );
+        add_filter( 'tiny_mce_plugins', function ( $plugins ) {
+            return is_array( $plugins ) ? array_diff( $plugins, [ 'wpemoji' ] ) : [];
+        } );
+        add_filter( 'wp_resource_hints', function ( $urls, $relation_type ) {
+            if ( 'dns-prefetch' === $relation_type ) {
+                $urls = array_filter( $urls, function ( $url ) {
+                    return ( is_string( $url ) && false === strpos( $url, 'svn.wp' ) );
+                } );
+            }
+            return $urls;
+        }, 10, 2 );
     }
 
     /**
