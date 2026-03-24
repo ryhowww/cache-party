@@ -582,9 +582,31 @@ class Settings {
         <p class="description">Generate above-the-fold CSS per template type. Inlined in &lt;head&gt; to prevent FOUC when CSS deferral is active.</p>
 
         <?php
-        $templates = \CacheParty\Assets\Critical_CSS::list_templates();
-        $warmer    = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
-        $has_api   = ! empty( $warmer['api_url'] ) && ! empty( $warmer['api_key'] );
+        $generated   = \CacheParty\Assets\Critical_CSS::list_templates();
+        $discovered  = \CacheParty\Assets\Critical_CSS::discover_templates();
+        $warmer      = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
+        $has_api     = ! empty( $warmer['api_url'] ) && ! empty( $warmer['api_key'] );
+
+        // Build lookup of generated templates by slug.
+        $gen_lookup = [];
+        foreach ( $generated as $g ) {
+            $gen_lookup[ $g['template'] ] = $g;
+        }
+
+        // Merge discovered templates with any generated templates not in discover list (e.g. default).
+        $all_templates = $discovered;
+        $discovered_slugs = array_column( $discovered, 'slug' );
+        // Always include 'default' if not discovered.
+        if ( ! in_array( 'default', $discovered_slugs, true ) ) {
+            $all_templates[] = [
+                'slug'             => 'default',
+                'name'             => 'Default Fallback',
+                'file'             => '',
+                'count'            => 0,
+                'sample_url'       => home_url( '/' ),
+                'has_critical_css' => isset( $gen_lookup['default'] ),
+            ];
+        }
         ?>
 
         <?php if ( ! $has_api ) : ?>
@@ -593,31 +615,34 @@ class Settings {
             </div>
         <?php endif; ?>
 
-        <table class="widefat striped" style="max-width:600px;">
+        <table class="widefat striped" style="max-width:900px;">
             <thead>
                 <tr>
                     <th>Template</th>
+                    <th>URL to analyze</th>
                     <th>Status</th>
                     <th>Size</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody>
-                <?php
-                $template_types = [ 'front-page', 'page', 'single', 'archive', 'category', 'search', '404', 'default' ];
-                foreach ( $template_types as $tpl ) :
-                    $existing = null;
-                    foreach ( $templates as $t ) {
-                        if ( $t['template'] === $tpl ) { $existing = $t; break; }
-                    }
+                <?php foreach ( $all_templates as $tpl ) :
+                    $slug      = $tpl['slug'];
+                    $existing  = $gen_lookup[ $slug ] ?? null;
+                    $url       = $tpl['sample_url'] ?? '';
                 ?>
                 <tr>
-                    <td><code><?php echo esc_html( $tpl ); ?></code></td>
+                    <td><code><?php echo esc_html( $slug ); ?></code></td>
+                    <td>
+                        <input type="text" class="regular-text cp-critical-url" data-template="<?php echo esc_attr( $slug ); ?>"
+                               value="<?php echo esc_attr( $url ); ?>"
+                               placeholder="https://..." style="width:100%;" />
+                    </td>
                     <td><?php echo $existing ? '<span style="color:#46b450;">Generated</span>' : '<span style="color:#999;">Not generated</span>'; ?></td>
                     <td><?php echo $existing ? esc_html( size_format( $existing['size'] ) ) : '&mdash;'; ?></td>
                     <td>
                         <?php if ( $has_api ) : ?>
-                            <button type="button" class="button cp-generate-critical" data-template="<?php echo esc_attr( $tpl ); ?>">
+                            <button type="button" class="button cp-generate-critical" data-template="<?php echo esc_attr( $slug ); ?>" <?php echo empty( $url ) ? 'disabled' : ''; ?>>
                                 <?php echo $existing ? 'Regenerate' : 'Generate'; ?>
                             </button>
                             <span class="cp-critical-status" style="margin-left:8px;"></span>
@@ -630,21 +655,27 @@ class Settings {
             </tbody>
         </table>
 
-        <p style="margin-top:12px;">
-            <label for="cp-critical-url"><strong>URL to analyze:</strong></label>
-            <input type="text" id="cp-critical-url" class="regular-text" value="<?php echo esc_attr( home_url( '/' ) ); ?>" placeholder="<?php echo esc_attr( home_url( '/' ) ); ?>" />
-            <span class="description">Change this per template type (e.g., use a blog post URL for "single").</span>
-        </p>
-
         <input type="hidden" id="cp-critical-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_critical' ) ); ?>">
 
         <script>
         jQuery(function($) {
+            // Enable/disable Generate button based on URL field.
+            $('.cp-critical-url').on('input', function() {
+                var tpl = $(this).data('template');
+                var $btn = $('.cp-generate-critical[data-template="' + tpl + '"]');
+                $btn.prop('disabled', !$(this).val().trim());
+            });
+
             $('.cp-generate-critical').on('click', function() {
                 var $btn = $(this);
                 var $status = $btn.siblings('.cp-critical-status');
                 var template = $btn.data('template');
-                var url = $('#cp-critical-url').val();
+                var url = $('.cp-critical-url[data-template="' + template + '"]').val().trim();
+
+                if (!url) {
+                    $status.html('<span style="color:#dc3232;">Enter a URL first.</span>');
+                    return;
+                }
 
                 $btn.prop('disabled', true);
                 $status.text('Generating...');
