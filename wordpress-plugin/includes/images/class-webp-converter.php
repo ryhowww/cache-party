@@ -98,9 +98,9 @@ class WebP_Converter {
             }
         }
 
-        if ( $webp_data['original'] || ! empty( $webp_data['sizes'] ) ) {
-            update_post_meta( $attachment_id, self::META_KEY, $webp_data );
-        }
+        // Always write meta — even if all conversions were skipped (WebP larger,
+        // corrupt file, etc.) — so the image is excluded from future batch queries.
+        update_post_meta( $attachment_id, self::META_KEY, $webp_data );
 
         return $metadata;
     }
@@ -310,9 +310,9 @@ class WebP_Converter {
             }
         }
 
-        if ( $webp_data['original'] || ! empty( $webp_data['sizes'] ) ) {
-            update_post_meta( $attachment_id, self::META_KEY, $webp_data );
-        }
+        // Always write meta — even if all conversions were skipped (WebP larger,
+        // corrupt file, etc.) — so the image is excluded from future batch queries.
+        update_post_meta( $attachment_id, self::META_KEY, $webp_data );
 
         return $result;
     }
