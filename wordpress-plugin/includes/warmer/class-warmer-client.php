@@ -16,59 +16,53 @@ class Warmer_Client {
     private $settings;
 
     public function __construct() {
-        $this->settings = get_option( 'cache_party_warmer', self::defaults() );
+        $this->settings = [
+            'api_url' => self::API_URL,
+            'api_key' => get_option( 'cache_party_api_key', '' ),
+        ];
 
         // Purge hooks — notify warmer on content changes.
-        if ( ! empty( $this->settings['api_url'] ) && ! empty( $this->settings['api_key'] ) ) {
+        if ( ! empty( $this->settings['api_key'] ) ) {
             new Purge_Hooks( $this->settings );
         }
 
-        // Admin: AJAX handlers + settings save hook.
+        // Admin: AJAX handlers + API key save hook.
         if ( is_admin() ) {
             add_action( 'wp_ajax_cache_party_test_warmer', [ $this, 'ajax_test_connection' ] );
             add_action( 'wp_ajax_cache_party_trigger_warm', [ $this, 'ajax_trigger_warm' ] );
-            add_action( 'update_option_cache_party_warmer', [ $this, 'on_settings_saved' ], 10, 2 );
+            add_action( 'update_option_cache_party_api_key', [ $this, 'on_api_key_saved' ], 10, 2 );
         }
 
         // REST endpoint: expose cache info for the warmer.
         add_action( 'rest_api_init', [ $this, 'register_rest_route' ] );
     }
 
-    const DEFAULT_API_URL = 'https://api.cacheparty.com';
-
-    public static function defaults() {
-        return [
-            'api_url'   => self::DEFAULT_API_URL,
-            'api_key'   => '',
-            'site_name' => '',
-        ];
-    }
+    const API_URL = 'https://api.cacheparty.com';
 
     // ─── Auto-Registration ───────────────────────────────────
 
     /**
-     * Called when warmer settings are saved.
-     * Registers or deregisters the site based on API key changes.
+     * Called when cache_party_api_key option is saved.
+     * Registers or deregisters the site based on key changes.
      */
-    public function on_settings_saved( $old, $new ) {
-        $old_key = $old['api_key'] ?? '';
-        $new_key = $new['api_key'] ?? '';
-
+    public function on_api_key_saved( $old_key, $new_key ) {
         // Key added or changed — register.
         if ( ! empty( $new_key ) && $new_key !== $old_key ) {
-            $result = $this->register_site( $new );
+            $settings = [ 'api_url' => self::API_URL, 'api_key' => $new_key ];
+            $result = $this->register_site( $settings );
             if ( $result ) {
-                add_settings_error( 'cache_party_warmer', 'registered',
+                add_settings_error( 'cache_party_general', 'registered',
                     'Site registered with Cache Party warmer.', 'success' );
             } else {
-                add_settings_error( 'cache_party_warmer', 'register_failed',
-                    'Could not register site with warmer. Check API URL and key.', 'error' );
+                add_settings_error( 'cache_party_general', 'register_failed',
+                    'Could not register site with warmer. Check your API key.', 'error' );
             }
         }
 
         // Key removed — deregister.
         if ( empty( $new_key ) && ! empty( $old_key ) ) {
-            $this->remove_site( $old );
+            $settings = [ 'api_url' => self::API_URL, 'api_key' => $old_key ];
+            $this->remove_site( $settings );
         }
     }
 
@@ -161,7 +155,7 @@ class Warmer_Client {
                 'Authorization' => 'Bearer ' . $api_key,
             ],
             'body' => wp_json_encode( [
-                'site' => $this->settings['site_name'] ?: wp_parse_url( home_url(), PHP_URL_HOST ),
+                'site' => wp_parse_url( home_url(), PHP_URL_HOST ),
                 'url'  => $url,
             ] ),
         ] );
@@ -186,7 +180,7 @@ class Warmer_Client {
                 'Authorization' => 'Bearer ' . $api_key,
             ],
             'body' => wp_json_encode( [
-                'site' => $this->settings['site_name'] ?: wp_parse_url( home_url(), PHP_URL_HOST ),
+                'site' => wp_parse_url( home_url(), PHP_URL_HOST ),
             ] ),
         ] );
     }
@@ -224,12 +218,11 @@ class Warmer_Client {
             wp_send_json_error( [ 'message' => 'Permission denied.' ] );
         }
 
-        $settings = get_option( 'cache_party_warmer', self::defaults() );
-        $api_url  = $settings['api_url'] ?? '';
-        $api_key  = $settings['api_key'] ?? '';
+        $api_url = self::API_URL;
+        $api_key = get_option( 'cache_party_api_key', '' );
 
-        if ( ! $api_url ) {
-            wp_send_json_error( [ 'message' => 'No API URL configured.' ] );
+        if ( empty( $api_key ) ) {
+            wp_send_json_error( [ 'message' => 'No API key configured. Add it on the General tab.' ] );
         }
 
         // Step 1: Health check.
@@ -292,12 +285,11 @@ class Warmer_Client {
             wp_send_json_error( [ 'message' => 'Permission denied.' ] );
         }
 
-        $settings = get_option( 'cache_party_warmer', self::defaults() );
-        $api_url  = $settings['api_url'] ?? '';
-        $api_key  = $settings['api_key'] ?? '';
+        $api_url = self::API_URL;
+        $api_key = get_option( 'cache_party_api_key', '' );
 
-        if ( ! $api_url ) {
-            wp_send_json_error( [ 'message' => 'No API URL configured.' ] );
+        if ( empty( $api_key ) ) {
+            wp_send_json_error( [ 'message' => 'No API key configured. Add it on the General tab.' ] );
         }
 
         $response = wp_remote_post( rtrim( $api_url, '/' ) . '/api/warm', [
@@ -307,7 +299,7 @@ class Warmer_Client {
                 'Authorization' => 'Bearer ' . $api_key,
             ],
             'body' => wp_json_encode( [
-                'site' => $settings['site_name'] ?: wp_parse_url( home_url(), PHP_URL_HOST ),
+                'site' => wp_parse_url( home_url(), PHP_URL_HOST ),
             ] ),
         ] );
 

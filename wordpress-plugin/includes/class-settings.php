@@ -34,6 +34,13 @@ class Settings {
             'show_in_rest'      => false,
         ] );
 
+        register_setting( 'cache_party_general', 'cache_party_api_key', [
+            'type'              => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default'           => '',
+            'show_in_rest'      => false,
+        ] );
+
         register_setting( 'cache_party_general', 'cache_party_cleanup', [
             'type'              => 'boolean',
             'sanitize_callback' => 'rest_sanitize_boolean',
@@ -52,13 +59,6 @@ class Settings {
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_assets' ],
             'default'           => self::asset_defaults(),
-            'show_in_rest'      => false,
-        ] );
-
-        register_setting( 'cache_party_warmer', 'cache_party_warmer', [
-            'type'              => 'array',
-            'sanitize_callback' => [ $this, 'sanitize_warmer' ],
-            'default'           => [],
             'show_in_rest'      => false,
         ] );
 
@@ -133,14 +133,6 @@ class Settings {
         return $clean;
     }
 
-    public function sanitize_warmer( $input ) {
-        return [
-            'api_url'   => isset( $input['api_url'] ) ? esc_url_raw( $input['api_url'] ) : '',
-            'api_key'   => isset( $input['api_key'] ) ? sanitize_text_field( $input['api_key'] ) : '',
-            'site_name' => isset( $input['site_name'] ) ? sanitize_text_field( $input['site_name'] ) : '',
-        ];
-    }
-
     public function sanitize_cloudflare( $input ) {
         $clean = [
             'email'  => isset( $input['email'] ) ? sanitize_email( $input['email'] ) : '',
@@ -182,10 +174,11 @@ class Settings {
 
     public function render_page() {
         $tabs = apply_filters( 'cache_party_settings_tabs', [
-            'general' => 'General',
-            'images'  => 'Images',
-            'assets'  => 'Assets',
-            'warmer'  => 'Warmer',
+            'general'    => 'General',
+            'images'     => 'Images',
+            'assets'     => 'Assets',
+            'warmer'     => 'Cache Warming',
+            'cloudflare' => 'Cloudflare',
         ] );
 
         $current_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
@@ -230,8 +223,22 @@ class Settings {
 
     private function render_tab_general() {
         $modules = get_option( 'cache_party_modules', [ 'images' ] );
+        $api_key = get_option( 'cache_party_api_key', '' );
         $cleanup = (bool) get_option( 'cache_party_cleanup', false );
         ?>
+        <h2>API Key</h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="cache_party_api_key">Cache Party API Key</label></th>
+                <td>
+                    <input type="text" name="cache_party_api_key" id="cache_party_api_key"
+                           value="<?php echo esc_attr( $api_key ); ?>"
+                           class="regular-text" placeholder="Paste your API key" />
+                    <p class="description">Connects this site to Cache Party cloud services (cache warming, critical CSS generation). One key works across all sites.</p>
+                </td>
+            </tr>
+        </table>
+
         <h2>Modules</h2>
         <table class="form-table" role="presentation">
             <tr>
@@ -319,7 +326,7 @@ class Settings {
                     <input type="number" name="cache_party_images[webp_quality]" id="cp_webp_quality"
                            value="<?php echo esc_attr( $settings['webp_quality'] ); ?>"
                            min="1" max="100" step="1" class="small-text" />
-                    <p class="description">Quality level for WebP output (1-100). Default: 80.</p>
+                    <p class="description">Quality level for WebP output (1-100). Default: 85.</p>
                 </td>
             </tr>
         </table>
@@ -584,8 +591,7 @@ class Settings {
         <?php
         $generated   = \CacheParty\Assets\Critical_CSS::list_templates();
         $discovered  = \CacheParty\Assets\Critical_CSS::discover_templates();
-        $warmer      = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
-        $has_api     = ! empty( $warmer['api_url'] ) && ! empty( $warmer['api_key'] );
+        $has_api     = ! empty( get_option( 'cache_party_api_key', '' ) );
 
         // Build lookup of generated templates by slug.
         $gen_lookup = [];
@@ -611,7 +617,7 @@ class Settings {
 
         <?php if ( ! $has_api ) : ?>
             <div class="notice notice-warning inline" style="margin-bottom:1em;">
-                <p>Configure the API URL and key on the Warmer tab to enable critical CSS generation.</p>
+                <p>Add your API key on the <a href="<?php echo esc_url( add_query_arg( 'tab', 'general', admin_url( 'admin.php?page=cache-party' ) ) ); ?>">General tab</a> to enable critical CSS generation.</p>
             </div>
         <?php endif; ?>
 
@@ -711,55 +717,29 @@ class Settings {
     }
 
     private function render_tab_warmer() {
-        $settings  = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
+        $api_key   = get_option( 'cache_party_api_key', '' );
         $last_warm = get_option( 'cache_party_last_warm', '' );
         ?>
-        <h2>Warmer Connection</h2>
-        <p class="description">Connect to your Railway-hosted cache warmer service. Content changes will trigger non-blocking warm requests.</p>
 
-        <table class="form-table" role="presentation">
-            <tr>
-                <th scope="row"><label for="cp_warmer_api_url">API URL</label></th>
-                <td>
-                    <input type="url" name="cache_party_warmer[api_url]" id="cp_warmer_api_url"
-                           value="<?php echo esc_attr( $settings['api_url'] ); ?>"
-                           class="regular-text" placeholder="https://api.cacheparty.com" />
-                    <p class="description">Base URL of the Cache Party API. Default: https://api.cacheparty.com</p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row"><label for="cp_warmer_api_key">API Key</label></th>
-                <td>
-                    <input type="text" name="cache_party_warmer[api_key]" id="cp_warmer_api_key"
-                           value="<?php echo esc_attr( $settings['api_key'] ); ?>"
-                           class="regular-text" placeholder="Bearer token" />
-                    <p class="description">Your Cache Party API key. Same key works across all sites.</p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row"><label for="cp_warmer_site_name">Site name</label></th>
-                <td>
-                    <input type="text" name="cache_party_warmer[site_name]" id="cp_warmer_site_name"
-                           value="<?php echo esc_attr( $settings['site_name'] ); ?>"
-                           class="regular-text" placeholder="<?php echo esc_attr( wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>" />
-                    <p class="description">Site identifier in the warmer's sites.json. Defaults to domain if empty.</p>
-                </td>
-            </tr>
-        </table>
+        <?php if ( empty( $api_key ) ) : ?>
+            <div class="notice notice-warning inline" style="margin: 20px 0 10px;">
+                <p>Add your API key on the <a href="<?php echo esc_url( add_query_arg( 'tab', 'general', admin_url( 'admin.php?page=cache-party' ) ) ); ?>">General tab</a> to enable cache warming.</p>
+            </div>
+        <?php endif; ?>
 
         <h2>Status</h2>
         <table class="form-table" role="presentation">
             <tr>
                 <th scope="row">Connection</th>
                 <td>
-                    <button type="button" class="button" id="cp-test-warmer">Test Connection</button>
+                    <button type="button" class="button" id="cp-test-warmer" <?php disabled( empty( $api_key ) ); ?>>Test Connection</button>
                     <span id="cp-warmer-test-result" style="margin-left:8px;"></span>
                 </td>
             </tr>
             <tr>
                 <th scope="row">Manual Warm</th>
                 <td>
-                    <button type="button" class="button" id="cp-trigger-warm">Trigger Warm Now</button>
+                    <button type="button" class="button" id="cp-trigger-warm" <?php disabled( empty( $api_key ) ); ?>>Trigger Warm Now</button>
                     <span id="cp-warmer-warm-result" style="margin-left:8px;"></span>
                 </td>
             </tr>
@@ -771,7 +751,7 @@ class Settings {
             <?php endif; ?>
         </table>
 
-        <h2>Hooks</h2>
+        <h2>Automatic Warming</h2>
         <p class="description">The warmer is notified automatically on:</p>
         <ul style="list-style:disc;padding-left:20px;">
             <li><code>save_post</code> — URL-specific warm when a post is published/updated</li>
@@ -817,10 +797,10 @@ class Settings {
             });
         });
         </script>
-
-        <hr style="margin: 30px 0;">
-
         <?php
+    }
+
+    private function render_tab_cloudflare() {
         $cf_settings = get_option( 'cache_party_cloudflare', [] );
         $cf_email    = defined( 'CLOUDFLARE_EMAIL' ) ? CLOUDFLARE_EMAIL : ( $cf_settings['email'] ?? '' );
         $cf_key      = defined( 'CLOUDFLARE_API_KEY' ) ? CLOUDFLARE_API_KEY : ( $cf_settings['api_key'] ?? '' );
@@ -828,7 +808,6 @@ class Settings {
         $cf_const    = defined( 'CLOUDFLARE_EMAIL' ) || defined( 'CLOUDFLARE_API_KEY' );
         ?>
 
-        <h2>Cloudflare</h2>
         <p class="description">Auto-purge Cloudflare cache on content changes. After purge, the warmer is notified to re-prime.</p>
 
         <?php if ( $cf_const ) : ?>
@@ -866,7 +845,7 @@ class Settings {
             </tr>
         </table>
 
-        <h3>Auto-Purge Triggers</h3>
+        <h2>Auto-Purge Triggers</h2>
         <ul style="list-style:disc;padding-left:20px;">
             <li><code>transition_post_status</code> — selective purge: post URL + taxonomies + homepage + feeds</li>
             <li><code>deleted_post</code> / <code>delete_attachment</code> — homepage + feeds</li>
@@ -874,8 +853,6 @@ class Settings {
             <li><code>switch_theme</code> / <code>customize_save_after</code> — full purge</li>
         </ul>
         <p class="description">The admin bar "Purge CF Cache" button triggers a full zone purge.</p>
-
-        <?php do_action( 'cache_party_after_warmer_settings' ); ?>
         <?php
     }
 }

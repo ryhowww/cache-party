@@ -209,12 +209,11 @@ class Asset_Optimizer {
             wp_send_json_error( [ 'message' => 'Template and URL are required.' ] );
         }
 
-        $warmer = wp_parse_args( get_option( 'cache_party_warmer', [] ), \CacheParty\Warmer\Warmer_Client::defaults() );
-        $api_url = $warmer['api_url'] ?? '';
-        $api_key = $warmer['api_key'] ?? '';
+        $api_url = \CacheParty\Warmer\Warmer_Client::API_URL;
+        $api_key = get_option( 'cache_party_api_key', '' );
 
-        if ( ! $api_url || ! $api_key ) {
-            wp_send_json_error( [ 'message' => 'API URL and key not configured.' ] );
+        if ( empty( $api_key ) ) {
+            wp_send_json_error( [ 'message' => 'API key not configured. Add it on the General tab.' ] );
         }
 
         $endpoint   = rtrim( $api_url, '/' ) . '/api/critical-css';

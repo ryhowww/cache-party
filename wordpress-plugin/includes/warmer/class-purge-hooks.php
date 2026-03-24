@@ -61,7 +61,7 @@ class Purge_Hooks {
         $api_url = $this->settings['api_url'] ?? '';
         $api_key = $this->settings['api_key'] ?? '';
 
-        if ( ! $api_url ) {
+        if ( ! $api_key ) {
             return;
         }
 
@@ -73,7 +73,7 @@ class Purge_Hooks {
                 'Authorization' => 'Bearer ' . $api_key,
             ],
             'body' => wp_json_encode( [
-                'site' => $this->settings['site_name'] ?: wp_parse_url( home_url(), PHP_URL_HOST ),
+                'site' => wp_parse_url( home_url(), PHP_URL_HOST ),
                 'url'  => $url,
             ] ),
         ] );
@@ -83,7 +83,7 @@ class Purge_Hooks {
         $api_url = $this->settings['api_url'] ?? '';
         $api_key = $this->settings['api_key'] ?? '';
 
-        if ( ! $api_url ) {
+        if ( ! $api_key ) {
             return;
         }
 
@@ -95,7 +95,7 @@ class Purge_Hooks {
                 'Authorization' => 'Bearer ' . $api_key,
             ],
             'body' => wp_json_encode( [
-                'site' => $this->settings['site_name'] ?: wp_parse_url( home_url(), PHP_URL_HOST ),
+                'site' => wp_parse_url( home_url(), PHP_URL_HOST ),
                 'all'  => true,
             ] ),
         ] );
