@@ -73,7 +73,7 @@ class Settings {
     public static function image_defaults() {
         return [
             'webp_enabled'     => true,
-            'webp_quality'     => 80,
+            'webp_quality'     => 85,
             'picture_enabled'  => true,
             'lazy_enabled'     => true,
             'eager_count'      => 2,
