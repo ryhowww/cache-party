@@ -222,8 +222,8 @@ class Settings {
 
                 do_action( 'cache_party_settings_tab_' . $current_tab );
 
-                // Critical CSS tab is all AJAX — no form settings to save.
-                if ( $current_tab !== 'critical_css' ) {
+                // AJAX-only tabs — no form settings to save.
+                if ( ! in_array( $current_tab, [ 'critical_css', 'warmer' ], true ) ) {
                     submit_button( 'Save Changes' );
                 }
                 ?>
