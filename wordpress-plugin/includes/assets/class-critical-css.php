@@ -55,6 +55,11 @@ class Critical_CSS {
      * Detect the current WordPress template type.
      */
     public function detect_template() {
+        // Front page first — it often uses a page builder template but needs its own CSS.
+        if ( is_front_page() && $this->has_critical_css( 'front-page' ) ) {
+            return 'front-page';
+        }
+
         if ( is_page_template() ) {
             $slug = get_page_template_slug();
             if ( $slug ) {
@@ -63,10 +68,6 @@ class Critical_CSS {
                     return $slug;
                 }
             }
-        }
-
-        if ( is_front_page() && $this->has_critical_css( 'front-page' ) ) {
-            return 'front-page';
         }
 
         if ( is_home() && $this->has_critical_css( 'home' ) ) {

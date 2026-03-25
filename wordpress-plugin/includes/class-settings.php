@@ -1024,6 +1024,14 @@ class Settings {
                 </td>
             </tr>
             <tr>
+                <th scope="row">Registration</th>
+                <td>
+                    <button type="button" class="button" id="cp-register-site" <?php disabled( empty( $api_key ) ); ?>>Register Site</button>
+                    <span id="cp-warmer-register-result" style="margin-left:8px;"></span>
+                    <p class="description">Manually register this site with the warmer service.</p>
+                </td>
+            </tr>
+            <tr>
                 <th scope="row">Manual Warm</th>
                 <td>
                     <button type="button" class="button" id="cp-trigger-warm" <?php disabled( empty( $api_key ) ); ?>>Trigger Warm Now</button>
@@ -1057,6 +1065,22 @@ class Settings {
                 $result.text('Testing...');
                 $.post(ajaxurl, {
                     action: 'cache_party_test_warmer',
+                    nonce: $('#cp-warmer-nonce').val()
+                }).done(function(res) {
+                    $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');
+                }).fail(function() {
+                    $result.html('<span style="color:#dc3232;">Request failed.</span>');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            $('#cp-register-site').on('click', function() {
+                var $btn = $(this), $result = $('#cp-warmer-register-result');
+                $btn.prop('disabled', true);
+                $result.text('Registering...');
+                $.post(ajaxurl, {
+                    action: 'cache_party_register_site',
                     nonce: $('#cp-warmer-nonce').val()
                 }).done(function(res) {
                     $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');

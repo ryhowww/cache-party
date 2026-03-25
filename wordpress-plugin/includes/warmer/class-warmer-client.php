@@ -30,7 +30,8 @@ class Warmer_Client {
         if ( is_admin() ) {
             add_action( 'wp_ajax_cache_party_test_warmer', [ $this, 'ajax_test_connection' ] );
             add_action( 'wp_ajax_cache_party_trigger_warm', [ $this, 'ajax_trigger_warm' ] );
-            add_action( 'update_option_cache_party_api_key', [ $this, 'on_api_key_saved' ], 10, 2 );
+            add_action( 'wp_ajax_cache_party_register_site', [ $this, 'ajax_register_site' ] );
+            add_filter( 'pre_update_option_cache_party_api_key', [ $this, 'on_api_key_saving' ], 10, 2 );
         }
 
         // REST endpoint: expose cache info for the warmer.
@@ -42,12 +43,12 @@ class Warmer_Client {
     // ─── Auto-Registration ───────────────────────────────────
 
     /**
-     * Called when cache_party_api_key option is saved.
-     * Registers or deregisters the site based on key changes.
+     * Filter: fires on every settings save, even when the value hasn't changed.
+     * Registers or deregisters the site accordingly.
      */
-    public function on_api_key_saved( $old_key, $new_key ) {
-        // Key added or changed — register.
-        if ( ! empty( $new_key ) && $new_key !== $old_key ) {
+    public function on_api_key_saving( $new_key, $old_key ) {
+        // Key present — always register (re-registers on every save).
+        if ( ! empty( $new_key ) ) {
             $settings = [ 'api_url' => self::API_URL, 'api_key' => $new_key ];
             $result = $this->register_site( $settings );
             if ( $result ) {
@@ -64,6 +65,8 @@ class Warmer_Client {
             $settings = [ 'api_url' => self::API_URL, 'api_key' => $old_key ];
             $this->remove_site( $settings );
         }
+
+        return $new_key;
     }
 
     /**
@@ -313,6 +316,30 @@ class Warmer_Client {
             wp_send_json_success( [ 'message' => 'Warm triggered!' ] );
         } else {
             wp_send_json_error( [ 'message' => sprintf( 'HTTP %d', $code ) ] );
+        }
+    }
+
+    /**
+     * AJAX: Manually register site with warmer.
+     */
+    public function ajax_register_site() {
+        check_ajax_referer( 'cache_party_warmer', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+
+        $api_key = get_option( 'cache_party_api_key', '' );
+
+        if ( empty( $api_key ) ) {
+            wp_send_json_error( [ 'message' => 'No API key configured. Add it on the General tab.' ] );
+        }
+
+        $result = $this->register_site();
+        if ( $result ) {
+            wp_send_json_success( [ 'message' => 'Site registered successfully.' ] );
+        } else {
+            wp_send_json_error( [ 'message' => 'Registration failed. Check your API key.' ] );
         }
     }
 }
