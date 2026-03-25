@@ -11,5 +11,8 @@
         "auto_alt_enabled": true,
         "exclude_keywords": ""
     },
+    "cache_party_assets": {
+        "remove_block_styles": true
+    },
     "cache_party_cleanup": false
 }

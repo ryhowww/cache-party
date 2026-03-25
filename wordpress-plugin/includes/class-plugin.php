@@ -24,6 +24,7 @@ class Plugin {
         new Module_Loader();
         new Meta_Box();
         new Cloudflare();
+        new Cache_Clear();
 
         // Warmer AJAX handlers: always register so settings tab buttons
         // work even when the warmer module isn't enabled in General tab.

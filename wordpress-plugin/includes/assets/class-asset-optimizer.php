@@ -52,6 +52,14 @@ class Asset_Optimizer {
             $this->disable_emojis();
         }
 
+        // Remove block editor frontend CSS and global styles preset variables.
+        if ( ! empty( $this->settings['remove_block_styles'] ) ) {
+            add_action( 'wp_enqueue_scripts', function() {
+                wp_dequeue_style( 'global-styles' );
+                wp_dequeue_style( 'wp-block-library' );
+            }, 100 );
+        }
+
         // Critical CSS (always active — inlines if files exist).
         new Critical_CSS();
 

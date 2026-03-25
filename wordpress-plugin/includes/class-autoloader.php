@@ -32,6 +32,7 @@ spl_autoload_register( function ( $class_name ) {
         'CacheParty\\Meta_Box'                  => __DIR__ . '/class-meta-box.php',
         'CacheParty\\Assets\\CLI_Assets'        => __DIR__ . '/assets/class-cli-assets.php',
         'CacheParty\\Cloudflare'                => __DIR__ . '/class-cloudflare.php',
+        'CacheParty\\Cache_Clear'               => __DIR__ . '/class-cache-clear.php',
     ];
 
     if ( isset( $classes[ $class_name ] ) ) {

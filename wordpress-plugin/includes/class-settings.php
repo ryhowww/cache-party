@@ -41,7 +41,7 @@ class Settings {
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party_general', 'cache_party_optimize_logged', [
+        register_setting( 'cache_party_general', 'cache_party_skip_logged', [
             'type'              => 'boolean',
             'sanitize_callback' => 'rest_sanitize_boolean',
             'default'           => true,
@@ -110,6 +110,7 @@ class Settings {
             'preload_css_http'        => true,
             'auto_detect_plugins'     => true,
             'remove_emojis'           => true,
+            'remove_block_styles'     => false,
         ];
     }
 
@@ -136,6 +137,7 @@ class Settings {
         $clean['preload_css_http']        = ! empty( $input['preload_css_http'] );
         $clean['auto_detect_plugins']     = ! empty( $input['auto_detect_plugins'] );
         $clean['remove_emojis']           = ! empty( $input['remove_emojis'] );
+        $clean['remove_block_styles']     = ! empty( $input['remove_block_styles'] );
 
         return $clean;
     }
@@ -289,14 +291,14 @@ class Settings {
         <table class="form-table" role="presentation">
             <tr>
                 <th scope="row">
-                    <label for="cache_party_optimize_logged">Optimize for logged-in editors</label>
+                    <label for="cache_party_skip_logged">Skip optimization for logged-in users</label>
                 </th>
                 <td>
-                    <input type="hidden" name="cache_party_optimize_logged" value="0" />
-                    <input type="checkbox" name="cache_party_optimize_logged" id="cache_party_optimize_logged" value="1"
-                        <?php checked( get_option( 'cache_party_optimize_logged', true ) ); ?> />
+                    <input type="hidden" name="cache_party_skip_logged" value="0" />
+                    <input type="checkbox" name="cache_party_skip_logged" id="cache_party_skip_logged" value="1"
+                        <?php checked( get_option( 'cache_party_skip_logged', true ) ); ?> />
                     <p class="description">
-                        When checked, logged-in editors and administrators see the optimized site. Uncheck to skip all optimization for logged-in editors (useful for page builder compatibility or debugging).
+                        When checked, logged-in editors and administrators see the unoptimized site (no CSS aggregation, no JS delay, no critical CSS inlining). Useful for debugging and page builder compatibility.
                     </p>
                 </td>
             </tr>
@@ -609,6 +611,15 @@ class Settings {
                     <input type="checkbox" name="cache_party_assets[remove_emojis]" id="cp_remove_emojis" value="1"
                         <?php checked( $settings['remove_emojis'] ); ?> />
                     <p class="description">Remove WordPress core emoji inline CSS, inline JavaScript, and DNS prefetch.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_remove_block_styles">Remove WordPress block styles</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[remove_block_styles]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[remove_block_styles]" id="cp_remove_block_styles" value="1"
+                        <?php checked( $settings['remove_block_styles'] ); ?> />
+                    <p class="description">Remove block editor frontend CSS (~30KB) and global styles preset variables (~2KB). Safe for sites not using Gutenberg blocks for content.</p>
                 </td>
             </tr>
         </table>

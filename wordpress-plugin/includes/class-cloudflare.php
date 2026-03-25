@@ -52,13 +52,7 @@ class Cloudflare {
         add_action( 'switch_theme', [ $this, 'purge_everything' ], 20 );
         add_action( 'customize_save_after', [ $this, 'purge_everything' ], 20 );
 
-        // Admin bar button.
-        add_action( 'admin_bar_menu', [ $this, 'admin_bar_button' ], 100 );
-        add_action( 'wp_ajax_cache_party_cf_purge', [ $this, 'ajax_purge_all' ] );
-
-        // Admin bar click handler.
-        add_action( 'admin_footer', [ $this, 'admin_bar_script' ] );
-        add_action( 'wp_footer', [ $this, 'admin_bar_script' ] );
+        // CF-only admin bar button removed — replaced by unified Cache_Clear class.
     }
 
     /* ---------------------------------------------------------------

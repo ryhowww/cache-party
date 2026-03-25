@@ -34,6 +34,11 @@ class Critical_CSS {
         }
         $done = true;
 
+        // Skip for logged-in editors when bypass is enabled.
+        if ( get_option( 'cache_party_skip_logged', true ) && is_user_logged_in() && current_user_can( 'edit_posts' ) ) {
+            return;
+        }
+
         $template = $this->detect_template();
         $css      = $this->get_critical_css( $template );
 
