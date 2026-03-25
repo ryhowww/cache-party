@@ -718,8 +718,9 @@ class Settings {
                 <?php foreach ( $all_templates as $tpl ) :
                     $slug     = $tpl['slug'];
                     $existing = $gen_lookup[ $slug ] ?? null;
-                    $url      = $tpl['sample_url'] ?? '';
                     $meta     = $all_meta[ $slug ] ?? [];
+                    // Prefer the URL used for last generation over the auto-discovered sample.
+                    $url      = ! empty( $meta['source_url'] ) ? $meta['source_url'] : ( $tpl['sample_url'] ?? '' );
 
                     // Staleness display.
                     $age_html = '&mdash;';
@@ -1114,10 +1115,13 @@ class Settings {
             <tr>
                 <th scope="row"><label for="cp_cf_api_key">API key / token</label></th>
                 <td>
-                    <input type="text" name="cache_party_cloudflare[api_key]" id="cp_cf_api_key"
+                    <input type="password" name="cache_party_cloudflare[api_key]" id="cp_cf_api_key"
                            value="<?php echo esc_attr( $cf_key ); ?>"
-                           class="regular-text" <?php echo $cf_const ? 'readonly' : ''; ?> />
-                    <p class="description">Global API Key (37 hex chars) or API Token. Auth method is auto-detected.</p>
+                           class="regular-text" autocomplete="off" <?php echo $cf_const ? 'readonly' : ''; ?> />
+                    <p class="description">
+                        <strong>Recommended:</strong> Create a scoped <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">API Token</a> with <code>Zone &gt; Cache Purge &gt; Purge</code> permission for this zone only. Email field is not needed for tokens.<br>
+                        Also accepts a Global API Key (requires email above). Auth method is auto-detected.
+                    </p>
                 </td>
             </tr>
             <tr>

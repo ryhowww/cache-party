@@ -121,7 +121,7 @@ class Cache_Clear {
         $api_key  = defined( 'CLOUDFLARE_API_KEY' ) ? CLOUDFLARE_API_KEY : ( $settings['api_key'] ?? '' );
         $domain   = defined( 'CLOUDFLARE_DOMAIN_NAME' ) ? CLOUDFLARE_DOMAIN_NAME : ( $settings['domain'] ?? '' );
 
-        if ( ! $email || ! $api_key ) {
+        if ( ! $api_key ) {
             return null;
         }
 
@@ -129,15 +129,25 @@ class Cache_Clear {
             $domain = wp_parse_url( home_url(), PHP_URL_HOST );
         }
 
+        // Auto-detect auth: 37 hex chars = Global API Key, otherwise scoped Token.
+        $is_global_key = strlen( $api_key ) === 37 && preg_match( '/^[0-9a-f]+$/', $api_key );
+        if ( $is_global_key && ! $email ) {
+            return null; // Global key requires email.
+        }
+
+        $headers = [ 'Content-Type' => 'application/json' ];
+        if ( $is_global_key ) {
+            $headers['X-Auth-Email'] = $email;
+            $headers['X-Auth-Key']   = $api_key;
+        } else {
+            $headers['Authorization'] = 'Bearer ' . $api_key;
+        }
+
         // Get zone ID.
         $zone_id = get_transient( 'cache_party_cf_zone_id' );
         if ( ! $zone_id ) {
             $response = wp_remote_get( 'https://api.cloudflare.com/client/v4/zones?name=' . $domain, [
-                'headers' => [
-                    'X-Auth-Email' => $email,
-                    'X-Auth-Key'   => $api_key,
-                    'Content-Type' => 'application/json',
-                ],
+                'headers' => $headers,
                 'timeout' => 10,
             ] );
 
@@ -157,11 +167,7 @@ class Cache_Clear {
         // Purge everything.
         $response = wp_remote_request( 'https://api.cloudflare.com/client/v4/zones/' . $zone_id . '/purge_cache', [
             'method'  => 'DELETE',
-            'headers' => [
-                'X-Auth-Email' => $email,
-                'X-Auth-Key'   => $api_key,
-                'Content-Type' => 'application/json',
-            ],
+            'headers' => $headers,
             'body'    => wp_json_encode( [ 'purge_everything' => true ] ),
             'timeout' => 10,
         ] );

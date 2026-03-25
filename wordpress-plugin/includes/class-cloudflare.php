@@ -37,7 +37,13 @@ class Cloudflare {
             $this->domain = wp_parse_url( home_url(), PHP_URL_HOST );
         }
 
-        if ( ! $this->email || ! $this->api_key ) {
+        if ( ! $this->api_key ) {
+            return;
+        }
+
+        // Global API Key requires email; scoped Token does not.
+        $is_global_key = strlen( $this->api_key ) === 37 && preg_match( '/^[0-9a-f]+$/', $this->api_key );
+        if ( $is_global_key && ! $this->email ) {
             return;
         }
 
