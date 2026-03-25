@@ -181,11 +181,12 @@ class Settings {
 
     public function render_page() {
         $tabs = apply_filters( 'cache_party_settings_tabs', [
-            'general'    => 'General',
-            'images'     => 'Images',
-            'assets'     => 'Assets',
-            'warmer'     => 'Cache Warming',
-            'cloudflare' => 'Cloudflare',
+            'general'      => 'General',
+            'images'       => 'Images',
+            'assets'       => 'Assets',
+            'critical_css' => 'Critical CSS',
+            'warmer'       => 'Cache Warming',
+            'cloudflare'   => 'Cloudflare',
         ] );
 
         $current_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'general';
@@ -219,7 +220,10 @@ class Settings {
 
                 do_action( 'cache_party_settings_tab_' . $current_tab );
 
-                submit_button( 'Save Changes' );
+                // Critical CSS tab is all AJAX — no form settings to save.
+                if ( $current_tab !== 'critical_css' ) {
+                    submit_button( 'Save Changes' );
+                }
                 ?>
             </form>
 
@@ -609,13 +613,34 @@ class Settings {
             </tr>
         </table>
 
-        <h2>Critical CSS</h2>
-        <p class="description">Generate above-the-fold CSS per template type. Inlined in &lt;head&gt; to prevent FOUC when CSS deferral is active.</p>
+        <input type="hidden" id="cp-assets-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_critical' ) ); ?>">
+        <script>
+        jQuery(function($) {
+            $('#cp-purge-css-cache').on('click', function() {
+                var $btn = $(this);
+                $btn.prop('disabled', true).text('Purging...');
+                $.post(ajaxurl, {
+                    action: 'cache_party_purge_css_cache',
+                    nonce: $('#cp-assets-nonce').val()
+                }).done(function(res) {
+                    $btn.text(res.success ? 'Purged!' : 'Failed');
+                    setTimeout(function() { $btn.text('Purge Cache').prop('disabled', false); }, 2000);
+                }).fail(function() {
+                    $btn.text('Failed').prop('disabled', false);
+                });
+            });
+        });
+        </script>
 
+        <?php do_action( 'cache_party_after_assets_settings' ); ?>
         <?php
+    }
+
+    private function render_tab_critical_css() {
         $generated   = \CacheParty\Assets\Critical_CSS::list_templates();
         $discovered  = \CacheParty\Assets\Critical_CSS::discover_templates();
         $has_api     = ! empty( get_option( 'cache_party_api_key', '' ) );
+        $all_meta    = get_option( 'cache_party_critical_meta', [] );
 
         // Build lookup of generated templates by slug.
         $gen_lookup = [];
@@ -623,10 +648,9 @@ class Settings {
             $gen_lookup[ $g['template'] ] = $g;
         }
 
-        // Merge discovered templates with any generated templates not in discover list (e.g. default).
-        $all_templates = $discovered;
+        // Merge discovered templates with generated ones. Always include 'default'.
+        $all_templates    = $discovered;
         $discovered_slugs = array_column( $discovered, 'slug' );
-        // Always include 'default' if not discovered.
         if ( ! in_array( 'default', $discovered_slugs, true ) ) {
             $all_templates[] = [
                 'slug'             => 'default',
@@ -639,49 +663,109 @@ class Settings {
         }
         ?>
 
+        <h2>Critical CSS</h2>
+        <p class="description">Generate above-the-fold CSS per template type. Inlined in &lt;head&gt; to prevent FOUC when CSS deferral is active.</p>
+
+        <?php
+        // Cloudflare detection notice.
+        if ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'cloudflare/cloudflare.php' ) ) {
+            $dismissed = get_user_meta( get_current_user_id(), 'cp_dismiss_cf_critical_notice', true );
+            if ( ! $dismissed ) : ?>
+                <div class="notice notice-info inline is-dismissible" id="cp-cf-notice" style="margin-bottom:1em;">
+                    <p>This site uses Cloudflare. If you have a Cache Everything rule, add <code>cp-nocache</code> to the bypass conditions for reliable critical CSS generation.
+                    <a href="#" id="cp-cf-notice-dismiss" style="margin-left:4px;">Don't show again</a></p>
+                </div>
+            <?php endif;
+        }
+        ?>
+
         <?php if ( ! $has_api ) : ?>
             <div class="notice notice-warning inline" style="margin-bottom:1em;">
                 <p>Add your API key on the <a href="<?php echo esc_url( add_query_arg( 'tab', 'general', admin_url( 'admin.php?page=cache-party' ) ) ); ?>">General tab</a> to enable critical CSS generation.</p>
             </div>
         <?php endif; ?>
 
-        <table class="widefat striped" style="max-width:900px;">
+        <?php if ( $has_api ) : ?>
+            <p>
+                <button type="button" class="button button-primary" id="cp-generate-all-critical">Generate All</button>
+                <span id="cp-generate-all-status" style="margin-left:8px;"></span>
+            </p>
+        <?php endif; ?>
+
+        <table class="widefat striped" style="max-width:1100px;">
             <thead>
                 <tr>
                     <th>Template</th>
                     <th>URL to analyze</th>
                     <th>Status</th>
                     <th>Size</th>
-                    <th>Action</th>
+                    <th>Generated</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ( $all_templates as $tpl ) :
-                    $slug      = $tpl['slug'];
-                    $existing  = $gen_lookup[ $slug ] ?? null;
-                    // Only pre-fill the homepage URL — other guesses are often wrong.
-                    $url = ( $slug === 'front-page' ) ? ( $tpl['sample_url'] ?? home_url( '/' ) ) : '';
+                    $slug     = $tpl['slug'];
+                    $existing = $gen_lookup[ $slug ] ?? null;
+                    $url      = $tpl['sample_url'] ?? '';
+                    $meta     = $all_meta[ $slug ] ?? [];
+
+                    // Staleness display.
+                    $age_html = '&mdash;';
+                    if ( ! empty( $meta['generated_at'] ) ) {
+                        $gen_time = strtotime( $meta['generated_at'] );
+                        $days     = max( 0, round( ( time() - $gen_time ) / DAY_IN_SECONDS ) );
+                        if ( $days === 0 ) {
+                            $age_html = '<span style="color:#46b450;">today</span>';
+                        } elseif ( $days <= 30 ) {
+                            $age_html = esc_html( $days . 'd ago' );
+                        } else {
+                            $age_html = '<span style="color:#dba617;">' . esc_html( $days . 'd ago' ) . ' (stale)</span>';
+                        }
+                    }
                 ?>
-                <tr>
-                    <td><code><?php echo esc_html( $slug ); ?></code></td>
+                <tr data-template="<?php echo esc_attr( $slug ); ?>">
+                    <td>
+                        <code><?php echo esc_html( $slug ); ?></code>
+                        <?php if ( ! empty( $tpl['name'] ) && $tpl['name'] !== $slug ) : ?>
+                            <br><small style="color:#666;"><?php echo esc_html( $tpl['name'] ); ?></small>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <input type="text" class="regular-text cp-critical-url" data-template="<?php echo esc_attr( $slug ); ?>"
                                value="<?php echo esc_attr( $url ); ?>"
                                placeholder="https://..." style="width:100%;" />
                     </td>
-                    <td><?php echo $existing ? '<span style="color:#46b450;">Generated</span>' : '<span style="color:#999;">Not generated</span>'; ?></td>
-                    <td><?php echo $existing ? esc_html( size_format( $existing['size'] ) ) : '&mdash;'; ?></td>
+                    <td class="cp-col-status"><?php echo $existing ? '<span style="color:#46b450;">Generated</span>' : '<span style="color:#999;">Not generated</span>'; ?></td>
+                    <td class="cp-col-size"><?php echo $existing ? esc_html( size_format( $existing['size'] ) ) : '&mdash;'; ?></td>
+                    <td class="cp-col-age"><?php echo $age_html; ?></td>
                     <td>
                         <?php if ( $has_api ) : ?>
                             <button type="button" class="button cp-generate-critical" data-template="<?php echo esc_attr( $slug ); ?>" <?php echo empty( $url ) ? 'disabled' : ''; ?>>
                                 <?php echo $existing ? 'Regenerate' : 'Generate'; ?>
                             </button>
+                            <?php if ( $existing ) : ?>
+                                <button type="button" class="button cp-view-critical" data-template="<?php echo esc_attr( $slug ); ?>" style="margin-left:4px;">View/Edit</button>
+                                <button type="button" class="button cp-delete-critical" data-template="<?php echo esc_attr( $slug ); ?>" style="margin-left:4px;color:#a00;">Delete</button>
+                            <?php endif; ?>
                             <span class="cp-critical-status" style="margin-left:8px;"></span>
                         <?php else : ?>
                             <button type="button" class="button" disabled>Generate</button>
                         <?php endif; ?>
                     </td>
                 </tr>
+                <?php if ( $existing ) : ?>
+                <tr class="cp-editor-row" data-template="<?php echo esc_attr( $slug ); ?>" style="display:none;">
+                    <td colspan="6" style="padding:12px 20px;background:#f9f9f9;">
+                        <textarea class="large-text cp-critical-editor" rows="12" style="font-family:monospace;font-size:12px;"></textarea>
+                        <p style="margin-top:8px;">
+                            <button type="button" class="button button-primary cp-save-critical" data-template="<?php echo esc_attr( $slug ); ?>">Save Changes</button>
+                            <button type="button" class="button cp-cancel-edit" data-template="<?php echo esc_attr( $slug ); ?>" style="margin-left:4px;">Cancel</button>
+                            <span class="cp-editor-status" style="margin-left:8px;"></span>
+                        </p>
+                    </td>
+                </tr>
+                <?php endif; ?>
                 <?php endforeach; ?>
             </tbody>
         </table>
@@ -690,19 +774,13 @@ class Settings {
 
         <script>
         jQuery(function($) {
-            // Purge CSS cache button.
-            $('#cp-purge-css-cache').on('click', function() {
-                var $btn = $(this);
-                $btn.prop('disabled', true).text('Purging...');
-                $.post(ajaxurl, {
-                    action: 'cache_party_purge_css_cache',
-                    nonce: $('#cp-critical-nonce').val()
-                }).done(function(res) {
-                    $btn.text(res.success ? 'Purged!' : 'Failed');
-                    setTimeout(function() { $btn.text('Purge Cache').prop('disabled', false); }, 2000);
-                }).fail(function() {
-                    $btn.text('Failed').prop('disabled', false);
-                });
+            var nonce = $('#cp-critical-nonce').val();
+
+            // Dismiss CF notice permanently.
+            $('#cp-cf-notice-dismiss').on('click', function(e) {
+                e.preventDefault();
+                $('#cp-cf-notice').fadeOut();
+                $.post(ajaxurl, { action: 'cache_party_dismiss_cf_notice', nonce: nonce });
             });
 
             // Enable/disable Generate button based on URL field.
@@ -712,33 +790,187 @@ class Settings {
                 $btn.prop('disabled', !$(this).val().trim());
             });
 
-            $('.cp-generate-critical').on('click', function() {
+            // Generate (clean regeneration: delete old → purge cache → generate fresh).
+            function generateTemplate(template, url, $btn, $status) {
+                if (!url) {
+                    $status.html('<span style="color:#dc3232;">Enter a URL first.</span>');
+                    return $.Deferred().reject().promise();
+                }
+
+                $btn.prop('disabled', true);
+                $status.text('Clearing caches...');
+
+                // Step 1: Delete existing + purge aggregation cache.
+                return $.post(ajaxurl, {
+                    action: 'cache_party_delete_critical',
+                    nonce: nonce,
+                    template: template
+                }).then(function() {
+                    return $.post(ajaxurl, {
+                        action: 'cache_party_purge_css_cache',
+                        nonce: nonce
+                    });
+                }).then(function() {
+                    // Step 2: Brief pause for caches to clear, then generate.
+                    $status.text('Generating...');
+                    return $.post(ajaxurl, {
+                        action: 'cache_party_generate_critical',
+                        nonce: nonce,
+                        template: template,
+                        url: url
+                    });
+                }).then(function(res) {
+                    if (res.success) {
+                        var $row = $btn.closest('tr');
+                        $row.find('.cp-col-status').html('<span style="color:#46b450;">Generated</span>');
+                        $row.find('.cp-col-size').text(res.data.size ? (Math.round(res.data.size / 1024) + ' KB') : '—');
+                        $row.find('.cp-col-age').html('<span style="color:#46b450;">today</span>');
+                        $btn.text('Regenerate');
+                        $status.html('<span style="color:#46b450;">' + res.data.message + '</span>');
+
+                        // Show View/Edit and Delete buttons if not present.
+                        if (!$row.find('.cp-view-critical').length) {
+                            $btn.after(
+                                ' <button type="button" class="button cp-view-critical" data-template="' + template + '" style="margin-left:4px;">View/Edit</button>' +
+                                ' <button type="button" class="button cp-delete-critical" data-template="' + template + '" style="margin-left:4px;color:#a00;">Delete</button>'
+                            );
+                        }
+                    } else {
+                        $status.html('<span style="color:#dc3232;">' + (res.data ? res.data.message : 'Failed') + '</span>');
+                    }
+                }).fail(function() {
+                    $status.html('<span style="color:#dc3232;">Request failed.</span>');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            }
+
+            // Single template generate.
+            $(document).on('click', '.cp-generate-critical', function() {
                 var $btn = $(this);
                 var $status = $btn.siblings('.cp-critical-status');
                 var template = $btn.data('template');
                 var url = $('.cp-critical-url[data-template="' + template + '"]').val().trim();
+                generateTemplate(template, url, $btn, $status);
+            });
 
-                if (!url) {
-                    $status.html('<span style="color:#dc3232;">Enter a URL first.</span>');
+            // Generate All — sequential per template.
+            $('#cp-generate-all-critical').on('click', function() {
+                var $allBtn = $(this).prop('disabled', true);
+                var $allStatus = $('#cp-generate-all-status');
+                var rows = [];
+
+                $('tr[data-template]').not('.cp-editor-row').each(function() {
+                    var $row = $(this);
+                    var tpl = $row.data('template');
+                    var url = $row.find('.cp-critical-url').val().trim();
+                    if (url) {
+                        rows.push({ template: tpl, url: url, $row: $row });
+                    }
+                });
+
+                if (rows.length === 0) {
+                    $allStatus.html('<span style="color:#dc3232;">No templates with URLs.</span>');
+                    $allBtn.prop('disabled', false);
                     return;
                 }
 
-                $btn.prop('disabled', true);
-                $status.text('Generating...');
+                var idx = 0;
+                function next() {
+                    if (idx >= rows.length) {
+                        $allStatus.html('<span style="color:#46b450;">Done! ' + rows.length + ' templates generated.</span>');
+                        $allBtn.prop('disabled', false);
+                        return;
+                    }
+                    var r = rows[idx];
+                    $allStatus.text('Generating ' + r.template + '... (' + (idx + 1) + '/' + rows.length + ')');
+                    var $btn = r.$row.find('.cp-generate-critical');
+                    var $status = r.$row.find('.cp-critical-status');
+                    generateTemplate(r.template, r.url, $btn, $status).always(function() {
+                        idx++;
+                        next();
+                    });
+                }
+                next();
+            });
 
+            // Delete critical CSS.
+            $(document).on('click', '.cp-delete-critical', function() {
+                var $btn = $(this);
+                var template = $btn.data('template');
+                if (!confirm('Delete critical CSS for "' + template + '"?')) return;
+
+                $btn.prop('disabled', true);
                 $.post(ajaxurl, {
-                    action: 'cache_party_generate_critical',
-                    nonce: $('#cp-critical-nonce').val(),
-                    template: template,
-                    url: url
+                    action: 'cache_party_delete_critical',
+                    nonce: nonce,
+                    template: template
                 }).done(function(res) {
                     if (res.success) {
-                        $status.html('<span style="color:#46b450;">' + res.data.message + '</span>');
-                        // Update the row inline instead of reloading (preserves user-entered URLs).
                         var $row = $btn.closest('tr');
-                        $row.find('td:eq(2)').html('<span style="color:#46b450;">Generated</span>');
-                        $row.find('td:eq(3)').text(res.data.size ? (Math.round(res.data.size / 1024) + ' KB') : '—');
-                        $btn.text('Regenerate');
+                        $row.find('.cp-col-status').html('<span style="color:#999;">Not generated</span>');
+                        $row.find('.cp-col-size').text('—');
+                        $row.find('.cp-col-age').text('—');
+                        $row.find('.cp-generate-critical').text('Generate');
+                        $row.find('.cp-view-critical, .cp-delete-critical').remove();
+                        // Hide editor row if open.
+                        $('.cp-editor-row[data-template="' + template + '"]').hide();
+                    }
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            // View/Edit — load CSS content into inline editor.
+            $(document).on('click', '.cp-view-critical', function() {
+                var template = $(this).data('template');
+                var $editorRow = $('.cp-editor-row[data-template="' + template + '"]');
+
+                if ($editorRow.is(':visible')) {
+                    $editorRow.hide();
+                    return;
+                }
+
+                var $textarea = $editorRow.find('.cp-critical-editor');
+                $textarea.val('Loading...');
+                $editorRow.show();
+
+                $.post(ajaxurl, {
+                    action: 'cache_party_get_critical',
+                    nonce: nonce,
+                    template: template
+                }).done(function(res) {
+                    if (res.success) {
+                        $textarea.val(res.data.css);
+                    } else {
+                        $textarea.val('Error loading CSS.');
+                    }
+                });
+            });
+
+            // Save edited CSS.
+            $(document).on('click', '.cp-save-critical', function() {
+                var $btn = $(this);
+                var template = $btn.data('template');
+                var $editorRow = $('.cp-editor-row[data-template="' + template + '"]');
+                var css = $editorRow.find('.cp-critical-editor').val();
+                var $status = $editorRow.find('.cp-editor-status');
+
+                $btn.prop('disabled', true);
+                $status.text('Saving...');
+
+                $.post(ajaxurl, {
+                    action: 'cache_party_save_critical',
+                    nonce: nonce,
+                    template: template,
+                    css: css
+                }).done(function(res) {
+                    if (res.success) {
+                        $status.html('<span style="color:#46b450;">Saved!</span>');
+                        // Update size in the main row.
+                        var $mainRow = $('tr[data-template="' + template + '"]').not('.cp-editor-row');
+                        $mainRow.find('.cp-col-size').text(res.data.size ? (Math.round(res.data.size / 1024) + ' KB') : '—');
+                        $mainRow.find('.cp-col-age').html('<span style="color:#46b450;">today</span>');
                     } else {
                         $status.html('<span style="color:#dc3232;">' + (res.data ? res.data.message : 'Failed') + '</span>');
                     }
@@ -748,10 +980,14 @@ class Settings {
                     $btn.prop('disabled', false);
                 });
             });
+
+            // Cancel edit.
+            $(document).on('click', '.cp-cancel-edit', function() {
+                var template = $(this).data('template');
+                $('.cp-editor-row[data-template="' + template + '"]').hide();
+            });
         });
         </script>
-
-        <?php do_action( 'cache_party_after_assets_settings' ); ?>
         <?php
     }
 

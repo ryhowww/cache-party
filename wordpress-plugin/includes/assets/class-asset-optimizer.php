@@ -67,9 +67,13 @@ class Asset_Optimizer {
             $this->auto_detect_plugins();
         }
 
-        // Admin AJAX: generate critical CSS.
+        // Admin AJAX: critical CSS + cache management.
         if ( is_admin() ) {
             add_action( 'wp_ajax_cache_party_generate_critical', [ $this, 'ajax_generate_critical' ] );
+            add_action( 'wp_ajax_cache_party_delete_critical', [ $this, 'ajax_delete_critical' ] );
+            add_action( 'wp_ajax_cache_party_get_critical', [ $this, 'ajax_get_critical' ] );
+            add_action( 'wp_ajax_cache_party_save_critical', [ $this, 'ajax_save_critical' ] );
+            add_action( 'wp_ajax_cache_party_dismiss_cf_notice', [ $this, 'ajax_dismiss_cf_notice' ] );
             add_action( 'wp_ajax_cache_party_purge_css_cache', [ $this, 'ajax_purge_css_cache' ] );
         }
 
@@ -93,6 +97,94 @@ class Asset_Optimizer {
         }
         Cache_Manager::clearall( 'css' );
         wp_send_json_success( [ 'message' => 'CSS cache purged.' ] );
+    }
+
+    /**
+     * AJAX: Delete critical CSS for a template.
+     */
+    public function ajax_delete_critical() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+
+        $template = isset( $_POST['template'] ) ? sanitize_text_field( $_POST['template'] ) : '';
+        if ( ! $template ) {
+            wp_send_json_error( [ 'message' => 'Template is required.' ] );
+        }
+
+        Critical_CSS::delete_critical_css( $template );
+
+        // Remove from metadata.
+        $all_meta = get_option( 'cache_party_critical_meta', [] );
+        unset( $all_meta[ $template ] );
+        update_option( 'cache_party_critical_meta', $all_meta, false );
+
+        wp_send_json_success( [ 'message' => 'Deleted.' ] );
+    }
+
+    /**
+     * AJAX: Get critical CSS content for editing.
+     */
+    public function ajax_get_critical() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+
+        $template = isset( $_POST['template'] ) ? sanitize_text_field( $_POST['template'] ) : '';
+        if ( ! $template ) {
+            wp_send_json_error( [ 'message' => 'Template is required.' ] );
+        }
+
+        $css_obj = new Critical_CSS();
+        $css = $css_obj->get_critical_css( $template );
+
+        if ( false === $css ) {
+            wp_send_json_error( [ 'message' => 'No critical CSS found for this template.' ] );
+        }
+
+        wp_send_json_success( [ 'css' => $css ] );
+    }
+
+    /**
+     * AJAX: Save edited critical CSS.
+     */
+    public function ajax_save_critical() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+
+        $template = isset( $_POST['template'] ) ? sanitize_text_field( $_POST['template'] ) : '';
+        // Use wp_unslash to preserve CSS content exactly as submitted.
+        $css      = isset( $_POST['css'] ) ? wp_unslash( $_POST['css'] ) : '';
+
+        if ( ! $template ) {
+            wp_send_json_error( [ 'message' => 'Template is required.' ] );
+        }
+
+        $saved = Critical_CSS::save_critical_css( $template, $css, [
+            'source' => 'manual_edit',
+        ] );
+
+        if ( ! $saved ) {
+            wp_send_json_error( [ 'message' => 'Failed to save CSS file.' ] );
+        }
+
+        wp_send_json_success( [
+            'message' => 'Saved!',
+            'size'    => strlen( $css ),
+        ] );
+    }
+
+    /**
+     * AJAX: Dismiss Cloudflare critical CSS notice.
+     */
+    public function ajax_dismiss_cf_notice() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+        update_user_meta( get_current_user_id(), 'cp_dismiss_cf_critical_notice', 1 );
+        wp_send_json_success();
     }
 
     public function enqueue_loader() {
