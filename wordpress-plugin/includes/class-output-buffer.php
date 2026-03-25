@@ -53,6 +53,11 @@ class Output_Buffer {
             return;
         }
 
+        // Skip optimization for logged-in editors/admins if setting is unchecked.
+        if ( ! get_option( 'cache_party_optimize_logged', true ) && is_user_logged_in() && current_user_can( 'edit_posts' ) ) {
+            return;
+        }
+
         ob_start( [ $this, 'process' ] );
     }
 

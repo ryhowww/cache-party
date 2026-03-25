@@ -41,6 +41,13 @@ class Settings {
             'show_in_rest'      => false,
         ] );
 
+        register_setting( 'cache_party_general', 'cache_party_optimize_logged', [
+            'type'              => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default'           => true,
+            'show_in_rest'      => false,
+        ] );
+
         register_setting( 'cache_party_general', 'cache_party_cleanup', [
             'type'              => 'boolean',
             'sanitize_callback' => 'rest_sanitize_boolean',
@@ -270,6 +277,23 @@ class Settings {
                             <?php checked( in_array( 'warmer', $modules, true ) ); ?> />
                         Automatic cache warming on content changes
                     </label>
+                </td>
+            </tr>
+        </table>
+
+        <h2>Optimization</h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row">
+                    <label for="cache_party_optimize_logged">Optimize for logged-in editors</label>
+                </th>
+                <td>
+                    <input type="hidden" name="cache_party_optimize_logged" value="0" />
+                    <input type="checkbox" name="cache_party_optimize_logged" id="cache_party_optimize_logged" value="1"
+                        <?php checked( get_option( 'cache_party_optimize_logged', true ) ); ?> />
+                    <p class="description">
+                        When checked, logged-in editors and administrators see the optimized site. Uncheck to skip all optimization for logged-in editors (useful for page builder compatibility or debugging).
+                    </p>
                 </td>
             </tr>
         </table>
