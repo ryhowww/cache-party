@@ -65,7 +65,7 @@ class Asset_Optimizer {
                 wp_deregister_style( 'global-styles' );
                 wp_dequeue_style( 'classic-theme-styles' );
                 wp_deregister_style( 'classic-theme-styles' );
-            }, 100 );
+            }, 999 );
         }
 
         // Critical CSS (always active — inlines if files exist).
