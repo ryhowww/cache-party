@@ -53,8 +53,16 @@ class Asset_Optimizer {
         }
 
         // Remove block editor frontend CSS and global styles preset variables.
-        // Dequeue + deregister at priority 999.
+        // Two-part approach:
+        // 1. Remove the action hooks that GENERATE the styles (prevents output entirely).
+        // 2. Dequeue + deregister at priority 999 as belt-and-suspenders.
         if ( ! empty( $this->settings['remove_block_styles'] ) ) {
+            // Remove the source functions that register and print the styles.
+            remove_action( 'wp_enqueue_scripts', 'wp_enqueue_global_styles' );
+            remove_action( 'wp_enqueue_scripts', 'wp_enqueue_classic_theme_styles' );
+            remove_action( 'wp_footer', 'wp_enqueue_global_styles', 1 );
+
+            // Dequeue + deregister as fallback.
             add_action( 'wp_enqueue_scripts', function() {
                 wp_dequeue_style( 'wp-block-library' );
                 wp_deregister_style( 'wp-block-library' );
