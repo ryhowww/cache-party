@@ -53,10 +53,18 @@ class Asset_Optimizer {
         }
 
         // Remove block editor frontend CSS and global styles preset variables.
+        // Must deregister (not just dequeue) to prevent WordPress from
+        // re-enqueuing as a dependency of other handles.
         if ( ! empty( $this->settings['remove_block_styles'] ) ) {
             add_action( 'wp_enqueue_scripts', function() {
-                wp_dequeue_style( 'global-styles' );
                 wp_dequeue_style( 'wp-block-library' );
+                wp_deregister_style( 'wp-block-library' );
+                wp_dequeue_style( 'wp-block-library-theme' );
+                wp_deregister_style( 'wp-block-library-theme' );
+                wp_dequeue_style( 'global-styles' );
+                wp_deregister_style( 'global-styles' );
+                wp_dequeue_style( 'classic-theme-styles' );
+                wp_deregister_style( 'classic-theme-styles' );
             }, 100 );
         }
 
