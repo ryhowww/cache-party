@@ -666,6 +666,21 @@ class Settings {
 
         <script>
         jQuery(function($) {
+            // Purge CSS cache button.
+            $('#cp-purge-css-cache').on('click', function() {
+                var $btn = $(this);
+                $btn.prop('disabled', true).text('Purging...');
+                $.post(ajaxurl, {
+                    action: 'cache_party_purge_css_cache',
+                    nonce: $('#cp-critical-nonce').val()
+                }).done(function(res) {
+                    $btn.text(res.success ? 'Purged!' : 'Failed');
+                    setTimeout(function() { $btn.text('Purge Cache').prop('disabled', false); }, 2000);
+                }).fail(function() {
+                    $btn.text('Failed').prop('disabled', false);
+                });
+            });
+
             // Enable/disable Generate button based on URL field.
             $('.cp-critical-url').on('input', function() {
                 var tpl = $(this).data('template');
