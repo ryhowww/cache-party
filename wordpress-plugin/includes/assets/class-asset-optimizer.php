@@ -53,9 +53,7 @@ class Asset_Optimizer {
         }
 
         // Remove block editor frontend CSS and global styles preset variables.
-        // Dequeue + deregister at priority 999, plus strip from HTML as a
-        // fallback — WordPress re-enqueues some handles through paths that
-        // survive deregister, so the output buffer strip is the guaranteed fix.
+        // Dequeue + deregister at priority 999.
         if ( ! empty( $this->settings['remove_block_styles'] ) ) {
             add_action( 'wp_enqueue_scripts', function() {
                 wp_dequeue_style( 'wp-block-library' );
@@ -67,16 +65,6 @@ class Asset_Optimizer {
                 wp_dequeue_style( 'classic-theme-styles' );
                 wp_deregister_style( 'classic-theme-styles' );
             }, 999 );
-
-            // Guaranteed removal: strip from HTML before CSS aggregator runs.
-            $buffer = Output_Buffer::instance();
-            $buffer->add_processor( 0, function( $html ) {
-                // Remove <style> tags for global-styles and classic-theme-styles.
-                $html = preg_replace( '/<style[^>]*id=["\'](?:global-styles|classic-theme-styles)-(?:inline-)?css["\'][^>]*>.*?<\/style>/is', '', $html );
-                // Remove <link> tags for wp-block-library.
-                $html = preg_replace( '/<link[^>]*id=["\']wp-block-library-(?:css|theme-css)["\'][^>]*\/?>/i', '', $html );
-                return $html;
-            } );
         }
 
         // Critical CSS (always active — inlines if files exist).
