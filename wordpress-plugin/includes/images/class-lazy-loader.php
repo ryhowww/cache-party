@@ -87,11 +87,17 @@ class Lazy_Loader {
         }
 
         // Try to extract attachment ID from class="wp-image-123".
-        if ( ! preg_match( '/\bwp-image-(\d+)\b/', $img, $id_match ) ) {
+        if ( preg_match( '/\bwp-image-(\d+)\b/', $img, $id_match ) ) {
+            $attachment_id = (int) $id_match[1];
+        } elseif ( preg_match( '/\bsrc=["\']([^"\']+)["\']/', $img, $src_match ) ) {
+            // Fallback: look up attachment ID from src URL (covers raw HTML blocks, page builders, etc.)
+            $attachment_id = attachment_url_to_postid( $src_match[1] );
+            if ( ! $attachment_id ) {
+                return $img;
+            }
+        } else {
             return $img;
         }
-
-        $attachment_id = (int) $id_match[1];
         $metadata = wp_get_attachment_metadata( $attachment_id );
         if ( ! $metadata || empty( $metadata['width'] ) || empty( $metadata['height'] ) ) {
             return $img;

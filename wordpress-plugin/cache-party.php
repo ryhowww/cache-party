@@ -3,7 +3,7 @@
  * Plugin Name:       Cache Party
  * Plugin URI:        https://completeseo.com
  * Description:       Unified WordPress performance plugin — WebP conversion, smart lazy loading, CSS/JS optimization, critical CSS, and cache warmer integration.
- * Version:           1.2.12
+ * Version:           1.2.13
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Ryan Howard
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'CACHE_PARTY_VERSION', '1.2.12' );
+define( 'CACHE_PARTY_VERSION', '1.2.13' );
 define( 'CACHE_PARTY_PATH', plugin_dir_path( __FILE__ ) );
 define( 'CACHE_PARTY_URL', plugin_dir_url( __FILE__ ) );
 define( 'CACHE_PARTY_FILE', __FILE__ );
