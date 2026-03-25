@@ -782,6 +782,93 @@ class Settings {
             </tbody>
         </table>
 
+        <?php
+        // Per-page critical CSS section.
+        $page_entries = [];
+        foreach ( $generated as $g ) {
+            if ( preg_match( '/^page-(\d+)$/', $g['template'], $m ) ) {
+                $pid   = (int) $m[1];
+                $title = get_the_title( $pid );
+                $url   = get_permalink( $pid );
+                $meta  = $all_meta[ $g['template'] ] ?? [];
+                $page_entries[] = [
+                    'slug'  => $g['template'],
+                    'title' => $title ?: "(ID {$pid})",
+                    'url'   => $url ?: '',
+                    'size'  => $g['size'],
+                    'meta'  => $meta,
+                ];
+            }
+        }
+        ?>
+
+        <h3 style="margin-top:2em;">Page-Specific Critical CSS</h3>
+        <p class="description">Override template critical CSS for individual pages (useful for page-builder pages with unique layouts).</p>
+
+        <?php if ( $has_api ) : ?>
+        <p style="margin-bottom:8px;">
+            <input type="text" id="cp-perpage-url" class="regular-text" placeholder="https://example.com/my-page/" style="width:400px;" />
+            <button type="button" class="button" id="cp-perpage-add">Add Page</button>
+            <span id="cp-perpage-status" style="margin-left:8px;"></span>
+        </p>
+        <?php endif; ?>
+
+        <table class="widefat striped" id="cp-perpage-table" style="max-width:1100px;">
+            <thead>
+                <tr>
+                    <th>Page</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Size</th>
+                    <th>Generated</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( empty( $page_entries ) ) : ?>
+                <tr class="cp-perpage-empty"><td colspan="6" style="color:#999;">No page-specific critical CSS generated yet.</td></tr>
+                <?php endif; ?>
+                <?php foreach ( $page_entries as $pe ) :
+                    $age_html = '&mdash;';
+                    if ( ! empty( $pe['meta']['generated_at'] ) ) {
+                        $gen_time = strtotime( $pe['meta']['generated_at'] );
+                        $days     = max( 0, round( ( time() - $gen_time ) / DAY_IN_SECONDS ) );
+                        if ( $days === 0 ) {
+                            $age_html = '<span style="color:#46b450;">today</span>';
+                        } elseif ( $days <= 30 ) {
+                            $age_html = esc_html( $days . 'd ago' );
+                        } else {
+                            $age_html = '<span style="color:#dba617;">' . esc_html( $days . 'd ago' ) . ' (stale)</span>';
+                        }
+                    }
+                ?>
+                <tr data-template="<?php echo esc_attr( $pe['slug'] ); ?>">
+                    <td><strong><?php echo esc_html( $pe['title'] ); ?></strong><br><code><?php echo esc_html( $pe['slug'] ); ?></code></td>
+                    <td><input type="text" class="regular-text cp-critical-url" data-template="<?php echo esc_attr( $pe['slug'] ); ?>" value="<?php echo esc_attr( $pe['url'] ); ?>" style="width:100%;" /></td>
+                    <td class="cp-col-status"><span style="color:#46b450;">Generated</span></td>
+                    <td class="cp-col-size"><?php echo esc_html( size_format( $pe['size'] ) ); ?></td>
+                    <td class="cp-col-age"><?php echo $age_html; ?></td>
+                    <td>
+                        <button type="button" class="button cp-generate-critical" data-template="<?php echo esc_attr( $pe['slug'] ); ?>">Regenerate</button>
+                        <button type="button" class="button cp-view-critical" data-template="<?php echo esc_attr( $pe['slug'] ); ?>" style="margin-left:4px;">View/Edit</button>
+                        <button type="button" class="button cp-delete-critical" data-template="<?php echo esc_attr( $pe['slug'] ); ?>" style="margin-left:4px;color:#a00;">Delete</button>
+                        <span class="cp-critical-status" style="margin-left:8px;"></span>
+                    </td>
+                </tr>
+                <tr class="cp-editor-row" data-template="<?php echo esc_attr( $pe['slug'] ); ?>" style="display:none;">
+                    <td colspan="6" style="padding:12px 20px;background:#f9f9f9;">
+                        <textarea class="large-text cp-critical-editor" rows="12" style="font-family:monospace;font-size:12px;"></textarea>
+                        <p style="margin-top:8px;">
+                            <button type="button" class="button button-primary cp-save-critical" data-template="<?php echo esc_attr( $pe['slug'] ); ?>">Save Changes</button>
+                            <button type="button" class="button cp-cancel-edit" data-template="<?php echo esc_attr( $pe['slug'] ); ?>" style="margin-left:4px;">Cancel</button>
+                            <span class="cp-editor-status" style="margin-left:8px;"></span>
+                        </p>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
         <input type="hidden" id="cp-critical-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_critical' ) ); ?>">
 
         <script>
@@ -997,6 +1084,71 @@ class Settings {
             $(document).on('click', '.cp-cancel-edit', function() {
                 var template = $(this).data('template');
                 $('.cp-editor-row[data-template="' + template + '"]').hide();
+            });
+
+            // Per-page: Add Page button.
+            $('#cp-perpage-add').on('click', function() {
+                var $btn = $(this).prop('disabled', true);
+                var $status = $('#cp-perpage-status');
+                var url = $('#cp-perpage-url').val().trim();
+
+                if (!url) {
+                    $status.html('<span style="color:#dc3232;">Enter a page URL.</span>');
+                    $btn.prop('disabled', false);
+                    return;
+                }
+
+                $status.text('Resolving...');
+
+                $.post(ajaxurl, {
+                    action: 'cache_party_resolve_url',
+                    nonce: nonce,
+                    url: url
+                }).done(function(res) {
+                    if (!res.success) {
+                        $status.html('<span style="color:#dc3232;">' + res.data.message + '</span>');
+                        $btn.prop('disabled', false);
+                        return;
+                    }
+
+                    var slug = res.data.slug;
+                    var title = res.data.title;
+
+                    // Check if already exists.
+                    if ($('tr[data-template="' + slug + '"]').length) {
+                        $status.html('<span style="color:#dba617;">Already exists — use Regenerate.</span>');
+                        $btn.prop('disabled', false);
+                        return;
+                    }
+
+                    // Remove empty-state row.
+                    $('.cp-perpage-empty').remove();
+
+                    // Add row to per-page table.
+                    var row = '<tr data-template="' + slug + '">' +
+                        '<td><strong>' + $('<span>').text(title).html() + '</strong><br><code>' + slug + '</code></td>' +
+                        '<td><input type="text" class="regular-text cp-critical-url" data-template="' + slug + '" value="' + $('<span>').text(url).html() + '" style="width:100%;" /></td>' +
+                        '<td class="cp-col-status"><span style="color:#999;">Generating...</span></td>' +
+                        '<td class="cp-col-size">&mdash;</td>' +
+                        '<td class="cp-col-age">&mdash;</td>' +
+                        '<td><button type="button" class="button cp-generate-critical" data-template="' + slug + '" disabled>Regenerate</button>' +
+                        '<span class="cp-critical-status" style="margin-left:8px;"></span></td></tr>';
+                    $('#cp-perpage-table tbody').append(row);
+
+                    var $row = $('tr[data-template="' + slug + '"]').not('.cp-editor-row');
+                    var $genBtn = $row.find('.cp-generate-critical');
+                    var $genStatus = $row.find('.cp-critical-status');
+
+                    // Generate immediately.
+                    generateTemplate(slug, url, $genBtn, $genStatus).always(function() {
+                        $btn.prop('disabled', false);
+                        $status.text('');
+                        $('#cp-perpage-url').val('');
+                    });
+                }).fail(function() {
+                    $status.html('<span style="color:#dc3232;">Request failed.</span>');
+                    $btn.prop('disabled', false);
+                });
             });
         });
         </script>

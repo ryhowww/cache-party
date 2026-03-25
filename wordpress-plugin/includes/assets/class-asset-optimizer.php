@@ -98,6 +98,7 @@ class Asset_Optimizer {
             add_action( 'wp_ajax_cache_party_save_critical', [ $this, 'ajax_save_critical' ] );
             add_action( 'wp_ajax_cache_party_dismiss_cf_notice', [ $this, 'ajax_dismiss_cf_notice' ] );
             add_action( 'wp_ajax_cache_party_purge_css_cache', [ $this, 'ajax_purge_css_cache' ] );
+            add_action( 'wp_ajax_cache_party_resolve_url', [ $this, 'ajax_resolve_url' ] );
         }
 
         // WP-CLI commands for assets.
@@ -208,6 +209,29 @@ class Asset_Optimizer {
         check_ajax_referer( 'cache_party_critical', 'nonce' );
         update_user_meta( get_current_user_id(), 'cp_dismiss_cf_critical_notice', 1 );
         wp_send_json_success();
+    }
+
+    /**
+     * AJAX: Resolve a URL to a post ID for per-page critical CSS.
+     */
+    public function ajax_resolve_url() {
+        check_ajax_referer( 'cache_party_critical', 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+        }
+
+        $url     = isset( $_POST['url'] ) ? esc_url_raw( $_POST['url'] ) : '';
+        $post_id = url_to_postid( $url );
+
+        if ( ! $post_id ) {
+            wp_send_json_error( [ 'message' => 'Could not resolve URL to a page. Make sure it\'s a published page on this site.' ] );
+        }
+
+        wp_send_json_success( [
+            'post_id' => $post_id,
+            'title'   => get_the_title( $post_id ),
+            'slug'    => 'page-' . $post_id,
+        ] );
     }
 
     public function enqueue_loader() {

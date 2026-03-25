@@ -55,6 +55,14 @@ class Critical_CSS {
      * Detect the current WordPress template type.
      */
     public function detect_template() {
+        // Per-page critical CSS — always wins over template CSS.
+        if ( is_singular() ) {
+            $post_id = get_the_ID();
+            if ( $this->has_critical_css( 'page-' . $post_id ) ) {
+                return 'page-' . $post_id;
+            }
+        }
+
         // Front page first — it often uses a page builder template but needs its own CSS.
         if ( is_front_page() && $this->has_critical_css( 'front-page' ) ) {
             return 'front-page';

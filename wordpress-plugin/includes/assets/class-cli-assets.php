@@ -16,10 +16,13 @@ class CLI_Assets {
      * ## OPTIONS
      *
      * [--template=<template>]
-     * : Template slug (e.g., front-page, page-service, single). Required unless --all.
+     * : Template slug (e.g., front-page, page-service, single). Required unless --all or --page.
      *
      * [--url=<url>]
-     * : URL to extract critical CSS from. Required unless --all.
+     * : URL to extract critical CSS from. Required unless --all or --page.
+     *
+     * [--page=<id>]
+     * : Generate per-page critical CSS for a specific post/page ID. URL auto-resolved.
      *
      * [--all]
      * : Generate for all discovered templates. Uses auto-detected sample URLs.
@@ -33,6 +36,7 @@ class CLI_Assets {
      * ## EXAMPLES
      *
      *     wp cache-party generate-critical --template=front-page --url=https://example.com/
+     *     wp cache-party generate-critical --page=123
      *     wp cache-party generate-critical --all
      *     wp cache-party generate-critical --all --dimensions=412x896,1300x900
      *
@@ -46,11 +50,27 @@ class CLI_Assets {
             return;
         }
 
+        $dimensions = ! empty( $assoc_args['dimensions'] )
+            ? self::parse_dimensions( $assoc_args['dimensions'] )
+            : Asset_Optimizer::get_critical_dimensions();
+
+        // Per-page: auto-resolve URL from post ID.
+        $page_id = $assoc_args['page'] ?? '';
+        if ( $page_id ) {
+            $url = get_permalink( (int) $page_id );
+            if ( ! $url ) {
+                \WP_CLI::error( "Post {$page_id} not found." );
+                return;
+            }
+            $this->generate_single( 'page-' . $page_id, $url, $dimensions, $assoc_args );
+            return;
+        }
+
         $template = $assoc_args['template'] ?? '';
         $url      = $assoc_args['url'] ?? '';
 
         if ( ! $template ) {
-            \WP_CLI::error( 'Please provide --template or --all.' );
+            \WP_CLI::error( 'Please provide --template, --page, or --all.' );
             return;
         }
 
@@ -58,10 +78,6 @@ class CLI_Assets {
             \WP_CLI::error( 'Please provide --url to extract critical CSS from.' );
             return;
         }
-
-        $dimensions = ! empty( $assoc_args['dimensions'] )
-            ? self::parse_dimensions( $assoc_args['dimensions'] )
-            : Asset_Optimizer::get_critical_dimensions();
 
         $this->generate_single( $template, $url, $dimensions, $assoc_args );
     }
