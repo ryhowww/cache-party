@@ -244,7 +244,7 @@ class Settings {
             <tr>
                 <th scope="row"><label for="cache_party_api_key">Cache Party API Key</label></th>
                 <td>
-                    <input type="text" name="cache_party_api_key" id="cache_party_api_key"
+                    <input type="password" name="cache_party_api_key" id="cache_party_api_key"
                            value="<?php echo esc_attr( $api_key ); ?>"
                            class="regular-text" placeholder="Paste your API key" />
                     <p class="description">Connects this site to Cache Party cloud services (cache warming, critical CSS generation). One key works across all sites.</p>
