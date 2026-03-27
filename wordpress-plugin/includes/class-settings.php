@@ -80,7 +80,7 @@ class Settings {
     public static function image_defaults() {
         return [
             'webp_enabled'     => true,
-            'webp_quality'     => 85,
+            'webp_quality'     => 80,
             'picture_enabled'  => true,
             'lazy_enabled'     => true,
             'eager_count'      => 2,
@@ -356,7 +356,7 @@ class Settings {
                     <input type="number" name="cache_party_images[webp_quality]" id="cp_webp_quality"
                            value="<?php echo esc_attr( $settings['webp_quality'] ); ?>"
                            min="1" max="100" step="1" class="small-text" />
-                    <p class="description">Quality level for WebP output (1-100). Default: 85.</p>
+                    <p class="description">Quality level for WebP output (1-100). Default: 80.</p>
                 </td>
             </tr>
         </table>
