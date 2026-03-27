@@ -375,6 +375,9 @@ class CSS_Aggregator {
             // Bring back INJECTLATER content (already-minified files).
             $code = $this->inject_minified( $code );
 
+            // Rewrite JPG/PNG url() references to WebP where the file exists.
+            $code = $this->rewrite_urls_to_webp( $code );
+
             // Post-minify filter.
             $tmp_code = apply_filters( 'cp_css_after_minify', $code );
             if ( ! empty( $tmp_code ) ) {
@@ -674,6 +677,44 @@ class CSS_Aggregator {
     }
 
     /**
+     * Rewrite JPG/PNG url() references to WebP where the .webp file exists.
+     *
+     * Runs after fixurls() so all URLs are absolute. For each url() pointing
+     * to a local .jpg/.jpeg/.png, checks if a .webp sibling exists on disk
+     * and swaps the extension. Self-gating: no WebP file = no change.
+     *
+     * @param string $code CSS with absolute URLs.
+     * @return string CSS with WebP URLs where available.
+     */
+    private function rewrite_urls_to_webp( $code ) {
+        if ( ! apply_filters( 'cp_css_webp_rewrite', true ) ) {
+            return $code;
+        }
+
+        return preg_replace_callback(
+            '#url\(\s*([\'"]?)([^)\'"]*?)\.(jpe?g|png)(\?[^)\'"]*?)?\1\s*\)#i',
+            function( $m ) {
+                $quote    = $m[1];
+                $base_url = $m[2];
+                $qs       = $m[4] ?? '';
+
+                $local_path = $this->getpath( $base_url . '.' . $m[3] );
+                if ( ! $local_path ) {
+                    return $m[0];
+                }
+
+                $webp_path = preg_replace( '/\.(jpe?g|png)$/i', '.webp', $local_path );
+                if ( ! file_exists( $webp_path ) ) {
+                    return $m[0];
+                }
+
+                return 'url(' . $quote . $base_url . '.webp' . $qs . $quote . ')';
+            },
+            $code
+        );
+    }
+
+    /**
      * Replace strings by replacing the longest matches first.
      * From autoptimizeStyles::replace_longest_matches_first()
      */
@@ -771,6 +812,7 @@ class CSS_Aggregator {
 
         if ( ! $cache->check() ) {
             $contents = self::fixurls( $filepath, $contents );
+            $contents = $this->rewrite_urls_to_webp( $contents );
 
             $cssmin   = new CSS_Minifier();
             $contents = trim( $cssmin->run( $contents ) );
