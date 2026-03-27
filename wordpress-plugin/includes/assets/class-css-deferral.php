@@ -60,6 +60,10 @@ class CSS_Deferral {
 
         $before_body = '';
         if ( $this->deferred_links !== '' ) {
+            // Debounced resize after deferred CSS loads — forces page builders
+            // (WPBakery, Elementor, etc.) to recalculate JS-driven layouts that
+            // depend on container dimensions set by the now-applied CSS.
+            $before_body .= '<script data-cp-skip>window.cpCssReflow=function(){clearTimeout(window.cpRT);window.cpRT=setTimeout(function(){dispatchEvent(new Event("resize"))},50)}</script>';
             $before_body .= "\r\n" . $this->deferred_links;
         }
         if ( $this->deferred_inlines !== '' ) {
@@ -127,7 +131,7 @@ class CSS_Deferral {
             $deferred = preg_replace( '/\bmedia=["\'][^"\']*["\']/i', '', $link );
             $deferred = str_replace(
                 '<link',
-                '<link media="print" onload="this.media=\'' . esc_attr( $media ) . '\'"',
+                '<link media="print" onload="this.onload=null;this.media=\'' . esc_attr( $media ) . '\';if(window.cpCssReflow)cpCssReflow()"',
                 $deferred
             );
 
