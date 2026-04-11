@@ -33,6 +33,7 @@ spl_autoload_register( function ( $class_name ) {
         'CacheParty\\Assets\\CLI_Assets'        => __DIR__ . '/assets/class-cli-assets.php',
         'CacheParty\\Cloudflare'                => __DIR__ . '/class-cloudflare.php',
         'CacheParty\\Cache_Clear'               => __DIR__ . '/class-cache-clear.php',
+        'CacheParty\\WPBakery\\WPBakery_BG'     => __DIR__ . '/wpbakery/class-wpbakery-bg.php',
     ];
 
     if ( isset( $classes[ $class_name ] ) ) {

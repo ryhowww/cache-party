@@ -26,6 +26,9 @@ class Plugin {
         new Cloudflare();
         new Cache_Clear();
 
+        // WPBakery responsive backgrounds — auto-detects WPBakery and injects mobile media query.
+        new WPBakery\WPBakery_BG();
+
         // Warmer AJAX handlers: always register so settings tab buttons
         // work even when the warmer module isn't enabled in General tab.
         if ( is_admin() && ! in_array( 'warmer', get_option( 'cache_party_modules', [] ), true ) ) {
