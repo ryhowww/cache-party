@@ -27,12 +27,19 @@ class Settings {
     public function register_settings() {
         // Each tab uses its own settings group so saving one tab
         // doesn't clear options from other tabs.
-        register_setting( 'cache_party_general', 'cache_party_modules', [
+        //
+        // cache_party_modules is registered in every tab that renders its own
+        // "Enable X" checkbox so that tab's form can save it. WP dedupes the
+        // sanitize filter callback so sanitize_modules still runs once per save.
+        $module_args = [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_modules' ],
             'default'           => [ 'images' ],
             'show_in_rest'      => false,
-        ] );
+        ];
+        foreach ( [ 'general', 'images', 'assets', 'warmer' ] as $group ) {
+            register_setting( "cache_party_{$group}", 'cache_party_modules', $module_args );
+        }
 
         register_setting( 'cache_party_general', 'cache_party_api_key', [
             'type'              => 'string',
@@ -48,7 +55,8 @@ class Settings {
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party_general', 'cache_party_cleanup', [
+        // cache_party_cleanup now lives on the Advanced tab. Option key unchanged.
+        register_setting( 'cache_party_advanced', 'cache_party_cleanup', [
             'type'              => 'boolean',
             'sanitize_callback' => 'rest_sanitize_boolean',
             'default'           => false,
@@ -62,12 +70,17 @@ class Settings {
             'show_in_rest'      => false,
         ] );
 
-        register_setting( 'cache_party_assets', 'cache_party_assets', [
+        // cache_party_assets is saved from two tabs (Assets + Advanced). Both
+        // register the same option; sanitize_assets merges with existing so the
+        // tabs don't clobber each other. Idempotent when the filter re-runs.
+        $assets_args = [
             'type'              => 'array',
             'sanitize_callback' => [ $this, 'sanitize_assets' ],
             'default'           => self::asset_defaults(),
             'show_in_rest'      => false,
-        ] );
+        ];
+        register_setting( 'cache_party_assets', 'cache_party_assets', $assets_args );
+        register_setting( 'cache_party_advanced', 'cache_party_assets', $assets_args );
 
         register_setting( 'cache_party_cloudflare', 'cache_party_cloudflare', [
             'type'              => 'array',
@@ -83,7 +96,7 @@ class Settings {
             'webp_quality'     => 80,
             'picture_enabled'  => true,
             'lazy_enabled'     => true,
-            'eager_count'      => 2,
+            'eager_count'      => 1,
             'auto_alt_enabled' => true,
             'exclude_keywords' => '',
         ];
@@ -115,29 +128,53 @@ class Settings {
     }
 
     public function sanitize_assets( $input ) {
+        // Start from the current stored value (falling back to defaults) so
+        // tabs that only post a subset of fields — e.g. the Advanced tab —
+        // don't wipe out fields they don't render. The Assets tab still posts
+        // every field, so its save behavior is identical to before.
         $defaults = self::asset_defaults();
-        $clean    = [];
+        $clean    = wp_parse_args( get_option( 'cache_party_assets', [] ), $defaults );
 
-        $clean['css_aggregate_enabled']   = ! empty( $input['css_aggregate_enabled'] );
-        $clean['css_aggregate_inline']    = ! empty( $input['css_aggregate_inline'] );
-        $clean['css_exclude']             = isset( $input['css_exclude'] ) ? sanitize_textarea_field( $input['css_exclude'] ) : '';
-        $clean['css_minify_excluded']     = ! empty( $input['css_minify_excluded'] );
-        $clean['css_defer_enabled']       = ! empty( $input['css_defer_enabled'] );
-        $clean['css_defer_keywords']      = isset( $input['css_defer_keywords'] ) ? sanitize_textarea_field( $input['css_defer_keywords'] ) : '';
-        $clean['css_defer_except']        = isset( $input['css_defer_except'] ) ? sanitize_textarea_field( $input['css_defer_except'] ) : '';
-        $clean['css_delete_keywords']     = isset( $input['css_delete_keywords'] ) ? sanitize_textarea_field( $input['css_delete_keywords'] ) : '';
-        $clean['js_delay_enabled']        = ! empty( $input['js_delay_enabled'] );
-        $clean['js_delay_tag_keywords']   = isset( $input['js_delay_tag_keywords'] ) ? sanitize_textarea_field( $input['js_delay_tag_keywords'] ) : '';
-        $clean['js_delay_code_keywords']  = isset( $input['js_delay_code_keywords'] ) ? sanitize_textarea_field( $input['js_delay_code_keywords'] ) : '';
-        $clean['js_delete_keywords']      = isset( $input['js_delete_keywords'] ) ? sanitize_textarea_field( $input['js_delete_keywords'] ) : '';
-        $clean['js_move_to_end_keywords'] = isset( $input['js_move_to_end_keywords'] ) ? sanitize_textarea_field( $input['js_move_to_end_keywords'] ) : '';
-        $clean['iframe_lazy_enabled']     = ! empty( $input['iframe_lazy_enabled'] );
-        $clean['iframe_exclude_keywords'] = isset( $input['iframe_exclude_keywords'] ) ? sanitize_textarea_field( $input['iframe_exclude_keywords'] ) : '';
-        $clean['idle_timeout']            = isset( $input['idle_timeout'] ) ? max( 0, min( 30, (int) $input['idle_timeout'] ) ) : $defaults['idle_timeout'];
-        $clean['preload_css_http']        = ! empty( $input['preload_css_http'] );
-        $clean['auto_detect_plugins']     = ! empty( $input['auto_detect_plugins'] );
-        $clean['remove_emojis']           = ! empty( $input['remove_emojis'] );
-        $clean['remove_block_styles']     = ! empty( $input['remove_block_styles'] );
+        $input = (array) $input;
+
+        $bool_fields = [
+            'css_aggregate_enabled',
+            'css_aggregate_inline',
+            'css_minify_excluded',
+            'css_defer_enabled',
+            'js_delay_enabled',
+            'iframe_lazy_enabled',
+            'preload_css_http',
+            'auto_detect_plugins',
+            'remove_emojis',
+            'remove_block_styles',
+        ];
+        foreach ( $bool_fields as $field ) {
+            if ( array_key_exists( $field, $input ) ) {
+                $clean[ $field ] = ! empty( $input[ $field ] );
+            }
+        }
+
+        $text_fields = [
+            'css_exclude',
+            'css_defer_keywords',
+            'css_defer_except',
+            'css_delete_keywords',
+            'js_delay_tag_keywords',
+            'js_delay_code_keywords',
+            'js_delete_keywords',
+            'js_move_to_end_keywords',
+            'iframe_exclude_keywords',
+        ];
+        foreach ( $text_fields as $field ) {
+            if ( array_key_exists( $field, $input ) ) {
+                $clean[ $field ] = sanitize_textarea_field( $input[ $field ] );
+            }
+        }
+
+        if ( array_key_exists( 'idle_timeout', $input ) ) {
+            $clean['idle_timeout'] = max( 0, min( 30, (int) $input['idle_timeout'] ) );
+        }
 
         return $clean;
     }
@@ -181,6 +218,40 @@ class Settings {
         return $links;
     }
 
+    /**
+     * Render the "Enable X" module toggle row used at the top of each module's
+     * settings tab. Emits hidden inputs for every currently-enabled OTHER module
+     * so this tab's save doesn't drop them from cache_party_modules.
+     */
+    private function render_module_toggle( $slug, $label, $description = '' ) {
+        $modules = (array) get_option( 'cache_party_modules', [ 'images' ] );
+        $enabled = in_array( $slug, $modules, true );
+        ?>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><?php echo esc_html( $label ); ?></th>
+                <td>
+                    <?php
+                    // Preserve every other currently-enabled module so saving
+                    // this tab only flips the one we own.
+                    foreach ( $modules as $m ) {
+                        if ( $m === $slug ) {
+                            continue;
+                        }
+                        echo '<input type="hidden" name="cache_party_modules[]" value="' . esc_attr( $m ) . '" />';
+                    }
+                    ?>
+                    <label>
+                        <input type="checkbox" name="cache_party_modules[]" value="<?php echo esc_attr( $slug ); ?>"
+                            <?php checked( $enabled ); ?> />
+                        <?php echo esc_html( $description ); ?>
+                    </label>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+
     public function render_page() {
         $tabs = apply_filters( 'cache_party_settings_tabs', [
             'general'      => 'General',
@@ -188,6 +259,7 @@ class Settings {
             'assets'       => 'Assets',
             'critical_css' => 'Critical CSS',
             'warmer'       => 'Cache Warming',
+            'advanced'     => 'Advanced',
             'cloudflare'   => 'Cloudflare',
         ] );
 
@@ -223,7 +295,7 @@ class Settings {
                 do_action( 'cache_party_settings_tab_' . $current_tab );
 
                 // AJAX-only tabs — no form settings to save.
-                if ( ! in_array( $current_tab, [ 'critical_css', 'warmer' ], true ) ) {
+                if ( ! in_array( $current_tab, [ 'critical_css' ], true ) ) {
                     submit_button( 'Save Changes' );
                 }
                 ?>
@@ -235,9 +307,7 @@ class Settings {
     }
 
     private function render_tab_general() {
-        $modules = get_option( 'cache_party_modules', [ 'images' ] );
         $api_key = get_option( 'cache_party_api_key', '' );
-        $cleanup = (bool) get_option( 'cache_party_cleanup', false );
         ?>
         <h2>API Key</h2>
         <table class="form-table" role="presentation">
@@ -250,39 +320,20 @@ class Settings {
                     <p class="description">Connects this site to Cache Party cloud services (cache warming, critical CSS generation). One key works across all sites.</p>
                 </td>
             </tr>
-        </table>
-
-        <h2>Modules</h2>
-        <table class="form-table" role="presentation">
             <tr>
-                <th scope="row">Image Optimizer</th>
+                <th scope="row">Connection</th>
                 <td>
-                    <input type="hidden" name="cache_party_modules[]" value="" />
-                    <label>
-                        <input type="checkbox" name="cache_party_modules[]" value="images"
-                            <?php checked( in_array( 'images', $modules, true ) ); ?> />
-                        WebP conversion, picture wrapping, smart lazy loading, auto alt text
-                    </label>
+                    <button type="button" class="button" id="cp-test-warmer" <?php disabled( empty( $api_key ) ); ?>>Test Connection</button>
+                    <span id="cp-warmer-test-result" style="margin-left:8px;"></span>
+                    <p class="description">Verifies this site can reach the Cache Party cloud service.</p>
                 </td>
             </tr>
             <tr>
-                <th scope="row">Asset Optimizer</th>
+                <th scope="row">Registration</th>
                 <td>
-                    <label>
-                        <input type="checkbox" name="cache_party_modules[]" value="assets"
-                            <?php checked( in_array( 'assets', $modules, true ) ); ?> />
-                        CSS deferral, JS delay, iframe lazy loading, resource hints
-                    </label>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row">Cache Warmer</th>
-                <td>
-                    <label>
-                        <input type="checkbox" name="cache_party_modules[]" value="warmer"
-                            <?php checked( in_array( 'warmer', $modules, true ) ); ?> />
-                        Automatic cache warming on content changes
-                    </label>
+                    <button type="button" class="button" id="cp-register-site" <?php disabled( empty( $api_key ) ); ?>>Register Site</button>
+                    <span id="cp-warmer-register-result" style="margin-left:8px;"></span>
+                    <p class="description">Manually register this site with the warmer service. Usually runs automatically after saving the API key.</p>
                 </td>
             </tr>
         </table>
@@ -304,28 +355,55 @@ class Settings {
             </tr>
         </table>
 
-        <h2>Cleanup</h2>
-        <table class="form-table" role="presentation">
-            <tr>
-                <th scope="row">
-                    <label for="cache_party_cleanup">Delete data on uninstall</label>
-                </th>
-                <td>
-                    <input type="hidden" name="cache_party_cleanup" value="0" />
-                    <input type="checkbox" name="cache_party_cleanup" id="cache_party_cleanup" value="1"
-                        <?php checked( $cleanup ); ?> />
-                    <p class="description">
-                        If enabled, all generated WebP files, settings, and metadata will be removed when this plugin is deleted.
-                    </p>
-                </td>
-            </tr>
-        </table>
+        <input type="hidden" id="cp-warmer-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_warmer' ) ); ?>">
+
+        <script>
+        jQuery(function($) {
+            $('#cp-test-warmer').on('click', function() {
+                var $btn = $(this), $result = $('#cp-warmer-test-result');
+                $btn.prop('disabled', true);
+                $result.text('Testing...');
+                $.post(ajaxurl, {
+                    action: 'cache_party_test_warmer',
+                    nonce: $('#cp-warmer-nonce').val()
+                }).done(function(res) {
+                    $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');
+                }).fail(function() {
+                    $result.html('<span style="color:#dc3232;">Request failed.</span>');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            $('#cp-register-site').on('click', function() {
+                var $btn = $(this), $result = $('#cp-warmer-register-result');
+                $btn.prop('disabled', true);
+                $result.text('Registering...');
+                $.post(ajaxurl, {
+                    action: 'cache_party_register_site',
+                    nonce: $('#cp-warmer-nonce').val()
+                }).done(function(res) {
+                    $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');
+                }).fail(function() {
+                    $result.html('<span style="color:#dc3232;">Request failed.</span>');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+        });
+        </script>
         <?php
     }
 
     private function render_tab_images() {
         $settings   = wp_parse_args( get_option( 'cache_party_images', [] ), self::image_defaults() );
         $webp_engine = \CacheParty\Images\WebP_Converter::is_conversion_available();
+
+        $this->render_module_toggle(
+            'images',
+            'Enable Image Optimizer',
+            'WebP conversion, picture wrapping, smart lazy loading, auto alt text'
+        );
         ?>
         <h2>WebP Conversion</h2>
 
@@ -391,7 +469,7 @@ class Settings {
                     <input type="number" name="cache_party_images[eager_count]" id="cp_eager_count"
                            value="<?php echo esc_attr( $settings['eager_count'] ); ?>"
                            min="0" max="20" step="1" class="small-text" />
-                    <p class="description">Number of above-the-fold images to load eagerly (0-20). Default: 2.</p>
+                    <p class="description">Number of above-the-fold images to load eagerly (0-20). Default: 1.</p>
                 </td>
             </tr>
             <tr>
@@ -424,6 +502,12 @@ class Settings {
     private function render_tab_assets() {
         $settings = wp_parse_args( get_option( 'cache_party_assets', [] ), self::asset_defaults() );
         $cache_stats = \CacheParty\Assets\Cache_Manager::stats();
+
+        $this->render_module_toggle(
+            'assets',
+            'Enable Asset Optimizer',
+            'CSS aggregation, CSS deferral, JS delay, iframe lazy loading'
+        );
         ?>
 
         <h2>CSS Aggregation</h2>
@@ -580,46 +664,6 @@ class Settings {
                            value="<?php echo esc_attr( $settings['idle_timeout'] ); ?>"
                            min="0" max="30" step="1" class="small-text" />
                     <p class="description">If no interaction after this many seconds, load deferred assets anyway. 0 = wait forever. Default: 5.</p>
-                </td>
-            </tr>
-        </table>
-
-        <h2>Advanced</h2>
-        <table class="form-table" role="presentation">
-            <tr>
-                <th scope="row"><label for="cp_preload_css_http">CSS preload via HTTP headers</label></th>
-                <td>
-                    <input type="hidden" name="cache_party_assets[preload_css_http]" value="0" />
-                    <input type="checkbox" name="cache_party_assets[preload_css_http]" id="cp_preload_css_http" value="1"
-                        <?php checked( $settings['preload_css_http'] ); ?> />
-                    <p class="description">Send CSS preload as HTTP Link headers (faster) instead of &lt;link&gt; tags.</p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row"><label for="cp_auto_detect_plugins">Auto-detect plugins</label></th>
-                <td>
-                    <input type="hidden" name="cache_party_assets[auto_detect_plugins]" value="0" />
-                    <input type="checkbox" name="cache_party_assets[auto_detect_plugins]" id="cp_auto_detect_plugins" value="1"
-                        <?php checked( $settings['auto_detect_plugins'] ); ?> />
-                    <p class="description">Automatically add delay rules for known plugins (PixelYourSite, GTM, etc.).</p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row"><label for="cp_remove_emojis">Remove WordPress emojis</label></th>
-                <td>
-                    <input type="hidden" name="cache_party_assets[remove_emojis]" value="0" />
-                    <input type="checkbox" name="cache_party_assets[remove_emojis]" id="cp_remove_emojis" value="1"
-                        <?php checked( $settings['remove_emojis'] ); ?> />
-                    <p class="description">Remove WordPress core emoji inline CSS, inline JavaScript, and DNS prefetch.</p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row"><label for="cp_remove_block_styles">Remove WordPress block styles</label></th>
-                <td>
-                    <input type="hidden" name="cache_party_assets[remove_block_styles]" value="0" />
-                    <input type="checkbox" name="cache_party_assets[remove_block_styles]" id="cp_remove_block_styles" value="1"
-                        <?php checked( $settings['remove_block_styles'] ); ?> />
-                    <p class="description">Remove block editor frontend CSS (~30KB) and global styles preset variables (~2KB). Safe for sites not using Gutenberg blocks for content.</p>
                 </td>
             </tr>
         </table>
@@ -1158,6 +1202,12 @@ class Settings {
     private function render_tab_warmer() {
         $api_key   = get_option( 'cache_party_api_key', '' );
         $last_warm = get_option( 'cache_party_last_warm', '' );
+
+        $this->render_module_toggle(
+            'warmer',
+            'Enable Cache Warmer',
+            'Automatic cache warming on content changes (requires a Cache Party API key on the General tab)'
+        );
         ?>
 
         <?php if ( empty( $api_key ) ) : ?>
@@ -1166,28 +1216,14 @@ class Settings {
             </div>
         <?php endif; ?>
 
-        <h2>Status</h2>
+        <h2>Manual Controls</h2>
         <table class="form-table" role="presentation">
-            <tr>
-                <th scope="row">Connection</th>
-                <td>
-                    <button type="button" class="button" id="cp-test-warmer" <?php disabled( empty( $api_key ) ); ?>>Test Connection</button>
-                    <span id="cp-warmer-test-result" style="margin-left:8px;"></span>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row">Registration</th>
-                <td>
-                    <button type="button" class="button" id="cp-register-site" <?php disabled( empty( $api_key ) ); ?>>Register Site</button>
-                    <span id="cp-warmer-register-result" style="margin-left:8px;"></span>
-                    <p class="description">Manually register this site with the warmer service.</p>
-                </td>
-            </tr>
             <tr>
                 <th scope="row">Manual Warm</th>
                 <td>
                     <button type="button" class="button" id="cp-trigger-warm" <?php disabled( empty( $api_key ) ); ?>>Trigger Warm Now</button>
                     <span id="cp-warmer-warm-result" style="margin-left:8px;"></span>
+                    <p class="description">Kick off a full-site warm immediately. Test Connection and Register Site live on the <a href="<?php echo esc_url( add_query_arg( 'tab', 'general', admin_url( 'admin.php?page=cache-party' ) ) ); ?>">General tab</a>.</p>
                 </td>
             </tr>
             <?php if ( $last_warm ) : ?>
@@ -1199,7 +1235,7 @@ class Settings {
         </table>
 
         <h2>Automatic Warming</h2>
-        <p class="description">The warmer is notified automatically on:</p>
+        <p class="description">When enabled, the warmer is notified automatically on:</p>
         <ul style="list-style:disc;padding-left:20px;">
             <li><code>save_post</code> — URL-specific warm when a post is published/updated</li>
             <li><code>trashed_post</code> / <code>deleted_post</code> — homepage warm</li>
@@ -1207,49 +1243,17 @@ class Settings {
             <li><code>customize_save_after</code> — full site warm</li>
         </ul>
 
-        <input type="hidden" id="cp-warmer-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_warmer' ) ); ?>">
+        <input type="hidden" id="cp-warmer-trigger-nonce" value="<?php echo esc_attr( wp_create_nonce( 'cache_party_warmer' ) ); ?>">
 
         <script>
         jQuery(function($) {
-            $('#cp-test-warmer').on('click', function() {
-                var $btn = $(this), $result = $('#cp-warmer-test-result');
-                $btn.prop('disabled', true);
-                $result.text('Testing...');
-                $.post(ajaxurl, {
-                    action: 'cache_party_test_warmer',
-                    nonce: $('#cp-warmer-nonce').val()
-                }).done(function(res) {
-                    $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');
-                }).fail(function() {
-                    $result.html('<span style="color:#dc3232;">Request failed.</span>');
-                }).always(function() {
-                    $btn.prop('disabled', false);
-                });
-            });
-
-            $('#cp-register-site').on('click', function() {
-                var $btn = $(this), $result = $('#cp-warmer-register-result');
-                $btn.prop('disabled', true);
-                $result.text('Registering...');
-                $.post(ajaxurl, {
-                    action: 'cache_party_register_site',
-                    nonce: $('#cp-warmer-nonce').val()
-                }).done(function(res) {
-                    $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');
-                }).fail(function() {
-                    $result.html('<span style="color:#dc3232;">Request failed.</span>');
-                }).always(function() {
-                    $btn.prop('disabled', false);
-                });
-            });
-
             $('#cp-trigger-warm').on('click', function() {
                 var $btn = $(this), $result = $('#cp-warmer-warm-result');
                 $btn.prop('disabled', true);
                 $result.text('Triggering...');
                 $.post(ajaxurl, {
                     action: 'cache_party_trigger_warm',
-                    nonce: $('#cp-warmer-nonce').val()
+                    nonce: $('#cp-warmer-trigger-nonce').val()
                 }).done(function(res) {
                     $result.html('<span style="color:' + (res.success ? '#46b450' : '#dc3232') + ';">' + (res.data ? res.data.message : 'Unknown') + '</span>');
                 }).fail(function() {
@@ -1260,6 +1264,79 @@ class Settings {
             });
         });
         </script>
+        <?php
+    }
+
+    private function render_tab_advanced() {
+        $settings = wp_parse_args( get_option( 'cache_party_assets', [] ), self::asset_defaults() );
+        $cleanup  = (bool) get_option( 'cache_party_cleanup', false );
+        ?>
+        <p class="description" style="margin-top:1em;">Opinionated defaults that squeeze out more performance but may have side effects on some sites. Toggle with intention.</p>
+
+        <h2>CSS Preload</h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="cp_preload_css_http">CSS preload via HTTP headers</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[preload_css_http]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[preload_css_http]" id="cp_preload_css_http" value="1"
+                        <?php checked( $settings['preload_css_http'] ); ?> />
+                    <p class="description">Send CSS preload as HTTP Link headers (faster) instead of &lt;link&gt; tags.</p>
+                </td>
+            </tr>
+        </table>
+
+        <h2>Plugin Detection</h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="cp_auto_detect_plugins">Auto-detect plugins</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[auto_detect_plugins]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[auto_detect_plugins]" id="cp_auto_detect_plugins" value="1"
+                        <?php checked( $settings['auto_detect_plugins'] ); ?> />
+                    <p class="description">Automatically add delay rules for known plugins (PixelYourSite, GTM, etc.).</p>
+                </td>
+            </tr>
+        </table>
+
+        <h2>WordPress Bloat Removal</h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="cp_remove_emojis">Remove WordPress emojis</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[remove_emojis]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[remove_emojis]" id="cp_remove_emojis" value="1"
+                        <?php checked( $settings['remove_emojis'] ); ?> />
+                    <p class="description">Remove WordPress core emoji inline CSS, inline JavaScript, and DNS prefetch.</p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="cp_remove_block_styles">Remove WordPress block styles</label></th>
+                <td>
+                    <input type="hidden" name="cache_party_assets[remove_block_styles]" value="0" />
+                    <input type="checkbox" name="cache_party_assets[remove_block_styles]" id="cp_remove_block_styles" value="1"
+                        <?php checked( $settings['remove_block_styles'] ); ?> />
+                    <p class="description">Remove block editor frontend CSS (~30KB) and global styles preset variables (~2KB). Safe for sites not using Gutenberg blocks for content.</p>
+                </td>
+            </tr>
+        </table>
+
+        <h2>Uninstall</h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row">
+                    <label for="cache_party_cleanup">Delete data on uninstall</label>
+                </th>
+                <td>
+                    <input type="hidden" name="cache_party_cleanup" value="0" />
+                    <input type="checkbox" name="cache_party_cleanup" id="cache_party_cleanup" value="1"
+                        <?php checked( $cleanup ); ?> />
+                    <p class="description">
+                        If enabled, all generated WebP files, settings, and metadata will be removed when this plugin is deleted.
+                    </p>
+                </td>
+            </tr>
+        </table>
         <?php
     }
 
