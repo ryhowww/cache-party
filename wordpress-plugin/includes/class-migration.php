@@ -13,6 +13,64 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class Migration {
 
     /**
+     * Run version-gated upgrade routines. Called on every plugins_loaded;
+     * the stored version guards keep it a no-op once everything has run.
+     *
+     * Fresh installs are detected by the absence of any Cache Party option
+     * and skipped — they get current defaults without being "upgraded".
+     */
+    public static function maybe_upgrade() {
+        $installed = get_option( 'cache_party_installed_version', null );
+        $current   = defined( 'CACHE_PARTY_VERSION' ) ? CACHE_PARTY_VERSION : '0';
+
+        if ( $installed === null ) {
+            $has_existing_data =
+                get_option( 'cache_party_modules', null ) !== null
+                || get_option( 'cache_party_assets', null ) !== null
+                || get_option( 'cache_party_images', null ) !== null;
+
+            if ( $has_existing_data ) {
+                self::upgrade_to_1_4_0();
+            }
+
+            update_option( 'cache_party_installed_version', $current );
+            return;
+        }
+
+        if ( version_compare( $installed, '1.4.0', '<' ) ) {
+            self::upgrade_to_1_4_0();
+        }
+
+        if ( $installed !== $current ) {
+            update_option( 'cache_party_installed_version', $current );
+        }
+    }
+
+    /**
+     * The "Enable Asset Optimizer" master toggle on the Assets tab was
+     * removed in 1.4.0. Asset_Optimizer now always loads; each feature has
+     * its own sub-toggle. To preserve experienced behavior on sites where
+     * the master was off (nothing was running), force the sub-toggles off
+     * so the features don't silently turn on after update. Sites with the
+     * master on keep their sub-toggle state unchanged.
+     */
+    private static function upgrade_to_1_4_0() {
+        $modules = (array) get_option( 'cache_party_modules', [ 'images' ] );
+        if ( in_array( 'assets', $modules, true ) ) {
+            return;
+        }
+
+        $assets = (array) get_option( 'cache_party_assets', [] );
+        foreach ( [ 'css_aggregate_enabled', 'css_defer_enabled', 'js_delay_enabled', 'iframe_lazy_enabled' ] as $key ) {
+            $assets[ $key ] = false;
+        }
+        update_option( 'cache_party_assets', $assets );
+
+        $modules[] = 'assets';
+        update_option( 'cache_party_modules', array_values( array_unique( $modules ) ) );
+    }
+
+    /**
      * Migrate settings from ImageOptimizer.ai.
      *
      * @return array Summary of migrated settings.

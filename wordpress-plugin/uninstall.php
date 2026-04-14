@@ -36,6 +36,7 @@ function cache_party_uninstall_site( $delete_webp ) {
     delete_option( 'cache_party_cleanup' );
     delete_option( 'cache_party_migrated_webp_meta' );
     delete_option( 'cache_party_last_warm' );
+    delete_option( 'cache_party_installed_version' );
     delete_transient( 'cache_party_cf_zone_id' );
 
     // Clean per-page meta.

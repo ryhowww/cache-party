@@ -37,7 +37,7 @@ class Settings {
             'default'           => [ 'images' ],
             'show_in_rest'      => false,
         ];
-        foreach ( [ 'general', 'images', 'assets', 'warmer' ] as $group ) {
+        foreach ( [ 'general', 'images', 'warmer' ] as $group ) {
             register_setting( "cache_party_{$group}", 'cache_party_modules', $module_args );
         }
 
@@ -502,12 +502,6 @@ class Settings {
     private function render_tab_assets() {
         $settings = wp_parse_args( get_option( 'cache_party_assets', [] ), self::asset_defaults() );
         $cache_stats = \CacheParty\Assets\Cache_Manager::stats();
-
-        $this->render_module_toggle(
-            'assets',
-            'Enable Asset Optimizer',
-            'CSS aggregation, CSS deferral, JS delay, iframe lazy loading'
-        );
         ?>
 
         <h2>CSS Aggregation</h2>

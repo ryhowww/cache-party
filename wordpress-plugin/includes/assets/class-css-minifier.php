@@ -40,10 +40,17 @@ class CSS_Minifier {
         // Hide calc/min/max/clamp expressions using base64 markers.
         // The marker format %%CALC...%% survives the YUI minifier because
         // it doesn't look like a CSS comment, string, or value.
+        //
+        // Regex uses PCRE subroutine recursion `(?2)` to balance parens, so
+        // the match is contained to the actual expression. A simpler
+        // `[^;}]*` pattern (as used historically by Autoptimize) is greedy
+        // across newlines and can swallow content when a calc-like token
+        // appears inside a CSS comment that precedes other comments —
+        // consuming `*/` boundaries and corrupting subsequent rules.
         $css = CSS_Aggregator::replace_contents_with_marker_if_exists(
             'CALC',
             'calc(',
-            '#(calc|min|max|clamp)\([^;}]*\)#m',
+            '#(calc|min|max|clamp)(\((?:[^()]+|(?2))*+\))#',
             $css
         );
 

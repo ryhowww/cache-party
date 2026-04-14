@@ -20,6 +20,8 @@ class Plugin {
     }
 
     public function load() {
+        Migration::maybe_upgrade();
+
         new Settings();
         new Module_Loader();
         new Meta_Box();
@@ -76,6 +78,7 @@ class Plugin {
         delete_option( 'cache_party_warmer' );
         delete_option( 'cache_party_cloudflare' );
         delete_option( 'cache_party_cleanup' );
+        delete_option( 'cache_party_installed_version' );
         delete_transient( 'cache_party_cf_zone_id' );
         delete_option( 'cache_party_migrated_webp_meta' );
         delete_option( 'cache_party_last_warm' );
